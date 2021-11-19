@@ -20,6 +20,9 @@ echo "Using -j $ncpu redirect to $tmpfile_o and $tmpfile_n"
 
 HEAD=$(git rev-parse HEAD)
 
+echo "Tree base:"
+git log -1 --pretty='%h ("%s")' HEAD~
+
 echo "Baseline building the tree"
 
 prep_config
