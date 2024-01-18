@@ -104,7 +104,10 @@ class VM:
         cmd = cmd.split(' ')
         if cwd:
             cmd += ["--cwd", cwd]
-        cmd += self.config.get('vm', 'virtme_opt').split(',')
+
+        opts = self.config.get('vm', 'virtme_opt')
+        cmd += opts.split(',') if opts else []
+
         cpus = self.config.get('vm', 'cpus', fallback="")
         if cpus:
             cmd += ["--cpus", cpus]
