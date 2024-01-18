@@ -122,7 +122,7 @@ class Fetcher:
         print("Testing ", to_test)
         self._last_date = newest
         # For now assume URL is in one of the remotes
-        subprocess.run('git fetch --all', cwd=self._tree_path, shell=True)
+        subprocess.run('git fetch --depth=1 --all', cwd=self._tree_path, shell=True)
         subprocess.run('git checkout ' + to_test["branch"],
                        cwd=self._tree_path, shell=True, check=True)
         self._run_test(to_test)
