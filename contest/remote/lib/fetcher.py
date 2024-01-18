@@ -128,8 +128,13 @@ class Fetcher:
         self._run_test(to_test)
 
     def run(self):
+        count = int(os.environ.get('NIPA_FETCHER_COUNT', 2**100))
         while True:
+            if count <= 0:
+                print("Fetcher is done")
+                break
             self._run_once()
+            count -= 1
             try:
                 time.sleep(self._check_secs)
             except KeyboardInterrupt:
