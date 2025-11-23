@@ -1,0 +1,211 @@
+Create a Python flask-based REST service for patch review using claude.
+
+0. Config
+
+Service configuration should use simliar format as the existing NIPA
+services (e.g. nipa_poller.py).
+
+Here is a list of config options it will likely need:
+ - git tree - the main kernel tree repo to use as a base
+ - max work trees - for parallel processing, how many work trees
+   the service is allowed to spawn/use
+ - max claude runs - maximum number of parallel Claude review processes
+   allowed to run concurrently across all workers (requires global
+   semaphore/ticketing system between workers)
+ - path to token db - path to a YAML file which contains token information.
+   The YAML structure should be:
+   ```yaml
+   tokens:
+     - token: "abc123"
+       name: "John Doe"
+       date: "2025-01-15"
+       superuser: false
+   ```
+ - results path - directory where to store the results
+ - [mcp] config - path to MCP config file (e.g., mcp-config.json)
+ - [mcp] tools - comma-separated list of allowed MCP tools
+   (e.g., "mcp__semcode__find_function,mcp__semcode__diff_functions,...")
+ - [review] prompt - path to the review prompt file (e.g., review-core.md)
+ - [claude] model - Claude model to use for reviews (default: sonnet)
+ - [claude] timeout - timeout in seconds for Claude review execution (default: 800)
+ - [claude] retries - number of retry attempts for failed reviews (default: 3)
+
+1. Patch input
+
+The service should accept patches either in raw form or series IDs
+from patchwork. In each case the service should accept patch series.
+In case of patchwork a series can be fetched directly from patchwork
+(use pw/patchwork.py, patchwork info from the config file).
+When user submits a series directly they should include a list
+of patch contents directly via the REST POST.
+
+Each submission should come with a reference to the tree to test against.
+All trees from git.kernel.org should be supported. When user uses a tree
+name the service should first check if git remote of such name already
+exists (in case it was added manually, to point to outside of git.kernel.org).
+If it exists - use it, if it doesn't check if the tree exists in kernel.org.
+For example for some/tree/name the service should check for
+git://git.kernel.org/pub/scm/linux/kernel/git/some/tree/name.git
+
+Once the remote is added the patch can be added to review queue.
+Worker picks up the patch from review queue, fetches the remote.
+
+For uniformity, the service operates on individual commit hash IDs:
+- If a hash or hash range was provided directly in the request, verify
+  the commits exist after fetching the remote (no patch application needed).
+  If a single hash is given, the range is hash^..hash. If a range is given,
+  use it as-is. Convert the range to a list of individual commit IDs.
+- If patches were provided (raw or from patchwork), the worker resets
+  its work tree hard to match the desired branch of the remote, applies
+  the patches, and captures the hash ID of each applied patch commit.
+  The range for semcode indexing will be the base branch..HEAD.
+
+Once the hash range is determined, the semcode DB must be updated by running
+semcode-index once (has high startup cost):
+  semcode-index -s . --git <range>
+where <range> is either hash^..hash (single commit) or hash1..hash2 (multiple commits)
+or base_branch..HEAD (for applied patches).
+
+After semcode indexing completes, convert the range to individual commit IDs
+for review.
+
+Then the review commences for each commit hash. Each commit is reviewed
+in parallel (subject to the max claude runs limit). For each commit hash,
+the worker creates a temporary copy of its work tree (e.g., wt-1.hash123),
+resets to that commit, and runs Claude review like air.sh does:
+  claude --mcp-config <config> --strict-mcp-config <allowed_tools> --model <model> \
+    -p "review the top commit in this directory using prompt <review_prompt>" \
+    --verbose --output-format=stream-json | tee review.json
+Then run the claude JSON processor to generate the other formats:
+  <claude_script> -i review.json -o review.md
+This generates both review.md and review-inline.txt from review.json.
+If a commit review times out or fails, retry that individual commit (up to
+the configured number of retries). The temporary work tree copies should be
+deleted once the review completes. If patches don't apply, the review should
+return an error.
+
+2. Internal flow
+
+Read air.sh to see a trivial prototype version of the flow for running
+locally. The paths configurable in the bash script should be configurable
+via the config file. Claude API Integration should be the same as
+the script (CLI).
+
+The service uses a two-stage worker pool architecture to maximize parallelism:
+
+**Setup Worker Pool:**
+- One setup worker per work tree (max_work_trees config option)
+- Each setup worker has a dedicated work tree (wt-1, wt-2, wt-3, etc.)
+- Setup workers pull entire review requests from the review queue
+- They perform all git operations: fetch remote, apply patches, run semcode-index
+- After semcode indexing, they create temporary work tree copies (wt-N.hashXXX)
+  for each commit to be reviewed
+- Temp copies are queued to the TempCopyQueue for LLM workers to process
+- No need to acquire/release work trees - each setup worker owns its tree
+
+**LLM Worker Pool:**
+- Independent pool of LLM workers (max_claude_runs config option)
+- LLM workers pull temp copy info from TempCopyQueue
+- They run Claude review on the temp copy and save results
+- After review completes (success or failure), they clean up the temp copy
+- LLM workers have no git tree management - they just run Claude
+
+**TempCopyQueue:**
+- Connects setup workers to LLM workers
+- Has a max size (2x max_claude_runs) to prevent setup workers from
+  getting too far ahead of LLM workers
+- Setup workers block if queue is full (backpressure mechanism)
+
+This architecture allows setup workers to prepare multiple commits in parallel
+while LLM workers independently process them, maximizing utilization of both
+git work trees and Claude API quota.
+
+Global operations on the tree must be done in the main thread, or use locking
+(e.g. adding a remote).
+
+The config should include the max work tree count. If all work trees
+are busy service should hold next-to-process requests in a queue.
+
+The service should store the review results in a filesystem structure
+built under the results path. The metadata / state of the service
+should be dumped to a JSON file (metadata.json) inside the results path
+so that the service can restart after a crash. The request queue should
+be also dumped to a separate file (queue.json) inside the results path.
+Raw patches themselves and review results should be stored in files,
+using this directory structure (one-based numbering):
+  {results_path}/
+      ├── metadata.json
+      ├── queue.json
+      └── {token}/{review_id}/
+          ├── message (optional, contains error/warning message text)
+          ├── 1/
+          │   ├── patch (raw patch or hash info)
+          │   ├── review.json
+          │   ├── review.md
+          │   └── review-inline.txt
+          ├── 2/
+          │   ├── patch
+          │   ├── review.json
+          │   ├── review.md
+          │   └── review-inline.txt
+          └── ... (one directory per patch in the series)
+
+If anything fails during review (commit hash doesn't exist, semcode-index fails,
+commit times out after all retries, etc.), the entire review should be marked
+with status = "error" and the error message should be written to the message file
+and returned in the message field. Reviews for commits that succeeded before the
+failure can still be returned.
+
+Token passed in the request must be present in the token list file.
+Token on the GET requests must match the token on the POST request,
+unless the GET token has "superuser" set to true in the token list file.
+
+3. UI
+
+Create a simple UI to query the status and recent things that happened
+in the service. Assume that the flask is reachable via /api on the same
+host where the ui is deployed (ui will be index.html in the root dir).
+
+The API:
+
+POST /review
+ inputs:
+  - (int) patchwork series ID; or
+  - (list) patches (raw patch bodies that can be applied by git am); or
+  - (string) hash (single commit ID or range like hash1..hash2);
+    (exactly one of the above three must be provided, mutually exclusive)
+  - (list) mask (optional, list of booleans, false means patch at a
+    corresponding index in the patch list (or within the series)
+    should not be reviewed - skip Claude call and return null for that entry;
+    mask list can be shorter than patch list, missing entries default to true);
+  - (string) tree name;
+  - (string) branch name (optional);
+  - (string) token;
+ output:
+  - (string) review ID (reference / handle, UUID, allocated locally to identify
+    the request)
+
+GET /review
+ inputs:
+  - (string) review ID
+  - (string) token;
+  - (string) format (optional, review format to fetch, enum: json, markup, inline)
+ outputs:
+  - (string) review ID
+  - (int) patchwork series ID (if request was to use patchwork);
+  - (string) hash (if request was for hash or hash range);
+  - (string) tree name;
+  - (string) status (enum: queued, in-progress, done, error)
+  - (string) message (optional, error string if error, otherwise warning)
+  - (date) date (when request was created)
+  - (date) start (if status is in-progress or done, when setup worker started processing)
+  - (date) start-llm (if status is in-progress or done, when LLM worker started Claude execution)
+  - (date) end (if status is done or error, when processing completed)
+  - (int) queue-len (if status is queued, number of patches in the queue
+    in front of the current request, not the number of requests)
+  - (list) review (only included if format is specified and status is done;
+    list of feedback per patch in the requested format;
+    entries may be null if there's no feedback for a given patch)
+
+Add additional API endpoints as needed to support the UI (e.g., listing recent
+reviews, service status/health, etc.)

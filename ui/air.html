@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NIPA AIR - AI Review Service</title>
+    <link rel="icon" type="image/png" href="/favicon.png">
+    <style>
+        :root {
+            --bg-primary: #f5f5f5;
+            --bg-secondary: white;
+            --bg-tertiary: #f8f9fa;
+            --bg-card: #ecf0f1;
+            --text-primary: #333;
+            --text-secondary: #555;
+            --text-muted: #7f8c8d;
+            --border-color: #ddd;
+            --accent-primary: #3498db;
+            --accent-primary-hover: #2980b9;
+            --heading-color: #2c3e50;
+            --heading-secondary: #34495e;
+            --disabled-bg: #bdc3c7;
+            --shadow: rgba(0,0,0,0.1);
+        }
+
+        [data-theme="dark"] {
+            --bg-primary: #1a1a1a;
+            --bg-secondary: #2d2d2d;
+            --bg-tertiary: #252525;
+            --bg-card: #404040;
+            --text-primary: #e0e0e0;
+            --text-secondary: #c0c0c0;
+            --text-muted: #999;
+            --border-color: #555;
+            --accent-primary: #4a9eff;
+            --accent-primary-hover: #6ab0ff;
+            --heading-color: #e0e0e0;
+            --heading-secondary: #d0d0d0;
+            --disabled-bg: #555;
+            --shadow: rgba(0,0,0,0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: var(--text-primary);
+            background: var(--bg-primary);
+            padding: 20px;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            box-shadow: 0 2px 4px var(--shadow);
+            padding: 30px;
+        }
+
+        .header-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .global-config {
+            background: var(--bg-card);
+            padding: 20px;
+            border-radius: 6px;
+            margin-bottom: 30px;
+            border: 1px solid var(--border-color);
+        }
+
+        .global-config h3 {
+            margin: 0 0 15px 0;
+            font-size: 16px;
+            color: var(--heading-secondary);
+            font-weight: 600;
+        }
+
+        .global-config .token-row {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .global-config .token-input {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .global-config .token-input label {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .global-config .token-input input {
+            width: 100%;
+        }
+
+        .global-config .token-checkbox {
+            padding-top: 20px;
+            white-space: nowrap;
+        }
+
+        .global-config .token-checkbox label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .theme-toggle {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .theme-toggle:hover {
+            background: var(--bg-tertiary);
+        }
+
+        h1 {
+            color: var(--heading-color);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        h1 img {
+            width: 40px;
+            height: 40px;
+        }
+
+        .subtitle {
+            color: var(--text-muted);
+            margin-bottom: 30px;
+        }
+
+        .section {
+            margin-bottom: 40px;
+        }
+
+        h2 {
+            color: var(--heading-secondary);
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--accent-primary);
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .form-field {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .form-field.full-width {
+            grid-column: 1 / -1;
+        }
+
+        label {
+            font-weight: 500;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            min-width: 120px;
+        }
+
+        .form-field label {
+            margin-bottom: 0;
+        }
+
+        .form-field input[type="text"],
+        .form-field textarea,
+        .form-field select {
+            flex: 1;
+        }
+
+        input[type="text"],
+        textarea,
+        select,
+        input[type="file"] {
+            padding: 8px 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 14px;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+        }
+
+        input[type="file"] {
+            padding: 6px 10px;
+        }
+
+        textarea {
+            min-height: 80px;
+            font-family: monospace;
+        }
+
+        button {
+            background: var(--accent-primary);
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+        }
+
+        button:hover {
+            background: var(--accent-primary-hover);
+        }
+
+        button:disabled {
+            background: var(--disabled-bg);
+            cursor: not-allowed;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .status-card {
+            background: var(--bg-card);
+            padding: 15px;
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        .status-card .label {
+            font-size: 12px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .status-card .value {
+            font-size: 24px;
+            font-weight: bold;
+            color: var(--heading-color);
+        }
+
+        .review-list {
+            list-style: none;
+        }
+
+        .review-item {
+            background: var(--bg-tertiary);
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            border-left: 4px solid var(--accent-primary);
+        }
+
+        .review-item.status-done {
+            border-left-color: #27ae60;
+        }
+
+        .review-item.status-error {
+            border-left-color: #e74c3c;
+        }
+
+        .review-item.status-in-progress {
+            border-left-color: #f39c12;
+        }
+
+        .review-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .review-id {
+            font-family: monospace;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .status-badge {
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-queued {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .status-in-progress {
+            background: #fff3e0;
+            color: #f57c00;
+        }
+
+        .status-done {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        .status-error {
+            background: #ffebee;
+            color: #c62828;
+        }
+
+        .review-details {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .message {
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+
+        .message.error {
+            background: #ffebee;
+            color: #c62828;
+            border-left: 4px solid #c62828;
+        }
+
+        .message.success {
+            background: #e8f5e9;
+            color: #2e7d32;
+            border-left: 4px solid #2e7d32;
+        }
+
+        .result-container {
+            margin-top: 20px;
+        }
+
+        .query-result-box {
+            background: var(--bg-tertiary);
+            padding: 15px;
+            border-radius: 4px;
+        }
+
+        .query-result-box h3 {
+            margin-top: 20px;
+        }
+
+        .query-result-box details {
+            margin: 10px 0;
+        }
+
+        pre {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: var(--text-muted);
+        }
+
+        .small {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header-controls">
+            <div>
+                <h1>
+                    <img src="/favicon.png" alt="NIPA AIR Logo">
+                    NIPA AIR
+                </h1>
+                <p class="subtitle">AI Review Service for Kernel Patches</p>
+            </div>
+            <button class="theme-toggle" onclick="toggleTheme()">
+                <span id="themeIcon">🌙</span> Dark Mode
+            </button>
+        </div>
+
+        <!-- Global Configuration -->
+        <div class="global-config">
+            <h3>Configuration</h3>
+            <div class="token-row">
+                <div class="token-input">
+                    <label for="token">API Token *</label>
+                    <input type="text" id="token" placeholder="Your API token" required>
+                </div>
+                <div class="token-checkbox">
+                    <label>
+                        <input type="checkbox" id="saveToken" onchange="handleSaveTokenChange()">
+                        Save token in browser
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Service Status -->
+        <div class="section">
+            <h2>Service Status</h2>
+            <div class="status-grid" id="statusGrid">
+                <div class="loading">Loading status...</div>
+            </div>
+        </div>
+
+        <!-- Submit Review -->
+        <div class="section">
+            <h2>Submit Review</h2>
+            <div class="form-row">
+                <div class="form-field">
+                    <label for="inputType">Input Type *</label>
+                    <select id="inputType">
+                        <option value="hash">Commit Hash/Range</option>
+                        <option value="patchwork">Patchwork Series ID</option>
+                        <option value="patches">Raw Patches</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="tree">Tree *</label>
+                    <input type="text" id="tree" placeholder="e.g., netdev/net-next" required>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-field" id="hashGroup">
+                    <label for="hash">Hash/Range *</label>
+                    <input type="text" id="hash" placeholder="abc123 or abc123..def456">
+                </div>
+                <div class="form-field" id="patchworkGroup" style="display:none;">
+                    <label for="patchworkId">Series ID *</label>
+                    <input type="text" id="patchworkId" placeholder="12345">
+                </div>
+                <div class="form-field" id="branchGroup">
+                    <label for="branch">Branch</label>
+                    <input type="text" id="branch" placeholder="main, master, etc.">
+                </div>
+            </div>
+            <div class="form-row" id="patchesGroup" style="display:none;">
+                <div class="form-field full-width">
+                    <label for="patchFile">Patch File *</label>
+                    <input type="file" id="patchFile" accept=".patch,.mbox,.eml,.txt">
+                </div>
+            </div>
+            <div class="form-row" id="patchesTextGroup" style="display:none;">
+                <div class="form-field full-width">
+                    <label for="patches">Or paste text</label>
+                    <textarea id="patches" placeholder="Paste patch content"></textarea>
+                </div>
+            </div>
+            <button id="submitBtn" onclick="submitReview()">Submit Review</button>
+            <div id="submitMessage"></div>
+        </div>
+
+        <!-- Query Review -->
+        <div class="section">
+            <h2>Query Review</h2>
+            <div class="form-row">
+                <div class="form-field">
+                    <label for="queryReviewId">Review ID</label>
+                    <input type="text" id="queryReviewId" placeholder="UUID">
+                </div>
+                <div class="form-field">
+                    <label for="format">Format</label>
+                    <select id="format">
+                        <option value="">Status only</option>
+                        <option value="json">JSON</option>
+                        <option value="markup">Markdown</option>
+                        <option value="inline">Inline</option>
+                    </select>
+                </div>
+            </div>
+            <button onclick="queryReview()">Query Review</button>
+            <div id="queryMessage"></div>
+            <div id="queryResult" class="result-container"></div>
+        </div>
+
+        <!-- Recent Reviews -->
+        <div class="section">
+            <h2>Recent Reviews</h2>
+            <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+                <button onclick="listReviews()">Load Recent Reviews</button>
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 14px;">
+                    <input type="checkbox" id="superuserMode">
+                    All users
+                </label>
+            </div>
+            <div id="reviewsList">
+                <p class="small">Click "Load Recent Reviews" to see your reviews</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api';
+
+        // Token management
+        function getToken() {
+            return document.getElementById('token').value;
+        }
+
+        function handleSaveTokenChange() {
+            const saveToken = document.getElementById('saveToken').checked;
+            const token = getToken();
+
+            if (saveToken && token) {
+                localStorage.setItem('apiToken', token);
+            } else {
+                localStorage.removeItem('apiToken');
+            }
+        }
+
+        // Load saved token on page load
+        function loadSavedToken() {
+            const savedToken = localStorage.getItem('apiToken');
+            if (savedToken) {
+                document.getElementById('token').value = savedToken;
+                document.getElementById('saveToken').checked = true;
+            }
+        }
+
+        // Auto-save token when it changes (if checkbox is checked)
+        document.getElementById('token').addEventListener('input', function() {
+            if (document.getElementById('saveToken').checked) {
+                localStorage.setItem('apiToken', this.value);
+            }
+        });
+
+        // Load service status on page load
+        loadSavedToken();
+        loadStatus();
+        setInterval(loadStatus, 10000); // Refresh every 10 seconds
+
+        // Input type switcher
+        document.getElementById('inputType').addEventListener('change', function() {
+            const type = this.value;
+
+            // Hide all input-specific fields
+            document.getElementById('hashGroup').style.display = 'none';
+            document.getElementById('patchworkGroup').style.display = 'none';
+            document.getElementById('patchesGroup').style.display = 'none';
+            document.getElementById('patchesTextGroup').style.display = 'none';
+
+            // Show the relevant one
+            if (type === 'hash') {
+                document.getElementById('hashGroup').style.display = 'flex';
+            } else if (type === 'patchwork') {
+                document.getElementById('patchworkGroup').style.display = 'flex';
+            } else if (type === 'patches') {
+                document.getElementById('patchesGroup').style.display = 'grid';
+                document.getElementById('patchesTextGroup').style.display = 'grid';
+            }
+        });
+
+        async function loadStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/status`);
+                const data = await response.json();
+
+                const grid = document.getElementById('statusGrid');
+                grid.innerHTML = `
+                    <div class="status-card">
+                        <div class="label">Queue Size</div>
+                        <div class="value">${data.queue_size}</div>
+                    </div>
+                    <div class="status-card">
+                        <div class="label">Queued</div>
+                        <div class="value">${data.review_counts.queued}</div>
+                    </div>
+                    <div class="status-card">
+                        <div class="label">In Progress</div>
+                        <div class="value">${data.review_counts['in-progress']}</div>
+                    </div>
+                    <div class="status-card">
+                        <div class="label">Completed</div>
+                        <div class="value">${data.review_counts.done}</div>
+                    </div>
+                    <div class="status-card">
+                        <div class="label">Errors</div>
+                        <div class="value">${data.review_counts.error}</div>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Error loading status:', error);
+            }
+        }
+
+        async function submitReview() {
+            const token = getToken();
+            const tree = document.getElementById('tree').value;
+            const branch = document.getElementById('branch').value;
+            const inputType = document.getElementById('inputType').value;
+
+            if (!token || !tree) {
+                showMessage('submitMessage', 'Please fill in all required fields (check API Token at top)', 'error');
+                return;
+            }
+
+            const data = { token, tree };
+            if (branch) data.branch = branch;
+
+            // Add input based on type
+            if (inputType === 'hash') {
+                const hash = document.getElementById('hash').value;
+                if (!hash) {
+                    showMessage('submitMessage', 'Please enter a commit hash or range', 'error');
+                    return;
+                }
+                data.hash = hash;
+            } else if (inputType === 'patchwork') {
+                const pwId = document.getElementById('patchworkId').value;
+                if (!pwId) {
+                    showMessage('submitMessage', 'Please enter a patchwork series ID', 'error');
+                    return;
+                }
+                data.patchwork_series_id = parseInt(pwId);
+            } else if (inputType === 'patches') {
+                const patchFile = document.getElementById('patchFile').files[0];
+                const patchText = document.getElementById('patches').value;
+
+                if (!patchFile && !patchText) {
+                    showMessage('submitMessage', 'Please upload a patch file or paste patch content', 'error');
+                    return;
+                }
+
+                if (patchFile) {
+                    // Read file content
+                    const fileContent = await readFileAsText(patchFile);
+                    data.patches = [fileContent];
+                } else {
+                    // Use pasted text
+                    data.patches = [patchText];
+                }
+            }
+
+            const btn = document.getElementById('submitBtn');
+            btn.disabled = true;
+
+            try {
+                const response = await fetch(`${API_BASE}/review`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showMessage('submitMessage',
+                        `Review submitted successfully! Review ID: ${result.review_id}`,
+                        'success');
+                    // Auto-fill query form
+                    document.getElementById('queryReviewId').value = result.review_id;
+                } else {
+                    showMessage('submitMessage', `Error: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                showMessage('submitMessage', `Error: ${error.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function queryReview() {
+            const reviewId = document.getElementById('queryReviewId').value;
+            const token = getToken();
+            const format = document.getElementById('format').value;
+
+            if (!reviewId || !token) {
+                showMessage('queryMessage', 'Please enter review ID and ensure API token is set at top', 'error');
+                return;
+            }
+
+            try {
+                let url = `${API_BASE}/review?id=${reviewId}&token=${token}`;
+                if (format) url += `&format=${format}`;
+
+                const response = await fetch(url);
+                const result = await response.json();
+
+                if (response.ok) {
+                    displayReviewResult(result);
+                    document.getElementById('queryMessage').innerHTML = '';
+                } else {
+                    showMessage('queryMessage', `Error: ${result.error}`, 'error');
+                    document.getElementById('queryResult').innerHTML = '';
+                }
+            } catch (error) {
+                showMessage('queryMessage', `Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function listReviews() {
+            const token = getToken();
+            const superuser = document.getElementById('superuserMode').checked;
+
+            if (!token) {
+                document.getElementById('reviewsList').innerHTML =
+                    '<p class="small">Please enter your API token at the top</p>';
+                return;
+            }
+
+            try {
+                let url = `${API_BASE}/reviews?token=${token}&limit=20`;
+                if (superuser) {
+                    url += '&superuser=true';
+                }
+
+                const response = await fetch(url);
+                const result = await response.json();
+
+                if (response.ok) {
+                    displayReviewsList(result.reviews);
+                } else {
+                    document.getElementById('reviewsList').innerHTML =
+                        `<div class="message error">Error: ${result.error}</div>`;
+                }
+            } catch (error) {
+                document.getElementById('reviewsList').innerHTML =
+                    `<div class="message error">Error: ${error.message}</div>`;
+            }
+        }
+
+        function formatDuration(seconds) {
+            if (seconds < 60) {
+                return `${Math.round(seconds)}s`;
+            } else if (seconds < 3600) {
+                const mins = Math.floor(seconds / 60);
+                const secs = Math.round(seconds % 60);
+                return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+            } else {
+                const hours = Math.floor(seconds / 3600);
+                const mins = Math.floor((seconds % 3600) / 60);
+                return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+            }
+        }
+
+        function displayReviewResult(data) {
+            const container = document.getElementById('queryResult');
+            let html = '<div class="query-result-box">';
+
+            html += `<p><strong>Review ID:</strong> <span class="review-id">${data.review_id}</span></p>`;
+            html += `<p><strong>Status:</strong> <span class="status-badge status-${data.status}">${data.status}</span></p>`;
+            html += `<p><strong>Tree:</strong> ${data.tree}</p>`;
+
+            // Show patch source information
+            if (data.patchwork_series_id) {
+                html += `<p><strong>Patchwork Series:</strong> ${data.patchwork_series_id}</p>`;
+            } else if (data.hash) {
+                html += `<p><strong>Hash/Range:</strong> <code>${data.hash}</code></p>`;
+            } else {
+                html += `<p><strong>Source:</strong> Uploaded patches</p>`;
+            }
+
+            html += `<p><strong>Date:</strong> ${new Date(data.date).toLocaleString()}</p>`;
+
+            // Calculate and display timing information
+            if (data.start) {
+                const queueTime = (new Date(data.start) - new Date(data.date)) / 1000; // seconds
+                if (queueTime >= 10) {
+                    html += `<p><strong>Queue time:</strong> ${formatDuration(queueTime)}</p>`;
+                }
+
+                // Setup time (git operations, applying patches, etc.)
+                if (data['start-llm']) {
+                    const setupTime = (new Date(data['start-llm']) - new Date(data.start)) / 1000;
+                    if (setupTime >= 1) {
+                        html += `<p><strong>Setup time:</strong> ${formatDuration(setupTime)}</p>`;
+                    }
+                }
+            }
+
+            // LLM time
+            if (data['start-llm'] && data.end) {
+                const llmTime = (new Date(data.end) - new Date(data['start-llm'])) / 1000;
+                html += `<p><strong>LLM time:</strong> ${formatDuration(llmTime)}</p>`;
+            }
+
+            // Total processing time (if complete but no LLM start recorded)
+            if (data.start && data.end && !data['start-llm']) {
+                const processingTime = (new Date(data.end) - new Date(data.start)) / 1000;
+                html += `<p><strong>Processing time:</strong> ${formatDuration(processingTime)}</p>`;
+            }
+
+            if (data['queue-len'] !== undefined) {
+                html += `<p><strong>Queue Position:</strong> ${data['queue-len']} patches ahead</p>`;
+            }
+
+            if (data.message) {
+                html += `<div class="message error"><strong>Message:</strong> ${data.message}</div>`;
+            }
+
+            if (data.review) {
+                html += '<h3>Review Results</h3>';
+                data.review.forEach((review, i) => {
+                    if (review === null) {
+                        html += `<p><strong>Patch ${i+1}:</strong> No feedback</p>`;
+                    } else {
+                        html += `<details><summary><strong>Patch ${i+1}</strong></summary>`;
+                        html += `<pre>${escapeHtml(review)}</pre></details>`;
+                    }
+                });
+            }
+
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        function displayReviewsList(reviews) {
+            const container = document.getElementById('reviewsList');
+
+            if (reviews.length === 0) {
+                container.innerHTML = '<p class="small">No reviews found</p>';
+                return;
+            }
+
+            let html = '<ul class="review-list">';
+            reviews.forEach(review => {
+                html += `
+                    <li class="review-item status-${review.status}">
+                        <div class="review-header">
+                            <span class="review-id">${review.review_id}</span>
+                            <span class="status-badge status-${review.status}">${review.status}</span>
+                        </div>
+                        <div class="review-details">
+                            <strong>${review.tree}</strong> - ${review.patch_count} patch(es)
+                            <br>
+                            <small>${new Date(review.date).toLocaleString()}</small>
+                        </div>
+                    </li>
+                `;
+            });
+            html += '</ul>';
+
+            container.innerHTML = html;
+        }
+
+        function showMessage(elementId, message, type) {
+            const el = document.getElementById(elementId);
+            el.innerHTML = `<div class="message ${type}">${message}</div>`;
+            setTimeout(() => {
+                if (type === 'success') el.innerHTML = '';
+            }, 5000);
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Helper to read file as text
+        function readFileAsText(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target.result);
+                reader.onerror = (e) => reject(e);
+                reader.readAsText(file);
+            });
+        }
+
+        // Dark mode toggle
+        function toggleTheme() {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+
+            // Update button text and icon
+            updateThemeButton(newTheme);
+        }
+
+        function updateThemeButton(theme) {
+            const icon = document.getElementById('themeIcon');
+            const button = document.querySelector('.theme-toggle');
+            if (theme === 'dark') {
+                icon.textContent = '☀️';
+                button.childNodes[1].textContent = ' Light Mode';
+            } else {
+                icon.textContent = '🌙';
+                button.childNodes[1].textContent = ' Dark Mode';
+            }
+        }
+
+        // Load theme on page load
+        (function() {
+            // Check if user has a saved preference, otherwise use system preference
+            let savedTheme = localStorage.getItem('theme');
+
+            if (!savedTheme) {
+                // Check system preference
+                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                savedTheme = prefersDark ? 'dark' : 'light';
+            }
+
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            updateThemeButton(savedTheme);
+
+            // Listen for system theme changes (only if user hasn't set a preference)
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+                if (!localStorage.getItem('theme')) {
+                    const newTheme = e.matches ? 'dark' : 'light';
+                    document.documentElement.setAttribute('data-theme', newTheme);
+                    updateThemeButton(newTheme);
+                }
+            });
+        })();
+    </script>
+</body>
+</html>

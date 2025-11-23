@@ -1,0 +1,19 @@
+# Example tokens.yaml file for NIPA AIR service
+#
+# This file contains authentication tokens for the AIR service API
+# Each token entry should have:
+#   - token: The token string (use strong random values in production)
+#   - name: Human-readable name/description
+#   - date: Date when the token was allocated
+#   - superuser: (optional) Set to true for admin access
+
+tokens:
+  - token: "example-token-abc123"
+    name: "Test User"
+    date: "2025-01-23"
+    superuser: false
+
+  - token: "admin-token-xyz789"
+    name: "Admin User"
+    date: "2025-01-23"
+    superuser: true
