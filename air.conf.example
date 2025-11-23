@@ -1,0 +1,53 @@
+# NIPA AIR Service Configuration Example
+# Copy this file and customize for your setup
+
+[air]
+# Path to the main git repository
+git_tree = /path/to/linux
+
+# Maximum number of work trees (parallel reviews)
+max_work_trees = 4
+
+# Maximum number of parallel Claude executions
+max_claude_runs = 4
+
+# Path to token database YAML file
+token_db = /path/to/tokens.yaml
+
+# Path to store review results
+results_path = /path/to/results/air
+
+# Port for Flask server
+port = 5000
+
+[mcp]
+# Path to MCP configuration file
+config = /path/to/mcp-config.json
+
+# Comma-separated list of allowed MCP tools
+tools = mcp__semcode__find_function,mcp__semcode__diff_functions,mcp__semcode__grep_functions,mcp__semcode__find_callchain,mcp__semcode__find_callers,mcp__semcode__find_calls,mcp__semcode__find_type
+
+[review]
+# Directory containing review prompts (will be copied to work tree)
+prompt_dir = /path/to/review-prompts
+
+# Main prompt file (relative path within prompt_dir)
+prompt_file = review-core.md
+
+[claude]
+# Claude model to use (default: sonnet)
+model = sonnet
+
+# Timeout in seconds for Claude review execution (default: 800)
+timeout = 800
+
+# Number of retry attempts for failed reviews (default: 3)
+retries = 3
+
+[patchwork]
+# Patchwork server configuration (optional - only if using patchwork integration)
+server = patchwork.kernel.org
+use_ssl = true
+project = netdev
+token = your_patchwork_token_here
+user = your_patchwork_user_id
