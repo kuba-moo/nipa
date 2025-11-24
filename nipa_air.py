@@ -60,7 +60,7 @@ def create_app(config_path=None, skip_semcode=False, keep_temp_trees=False):
 
     # Initialize service components
     token_auth = TokenAuth(config.token_db_path)
-    service = AirService(config)
+    service = AirService(config, token_auth=token_auth)
 
     # Create Flask app
     app = Flask(__name__, static_folder='ui', static_url_path='')
@@ -102,11 +102,12 @@ def create_app(config_path=None, skip_semcode=False, keep_temp_trees=False):
         token = request.args.get('token')
         fmt = request.args.get('format')
 
-        if not review_id or not token:
-            return jsonify({'error': 'Missing review_id or token'}), 400
+        if not review_id:
+            return jsonify({'error': 'Missing review_id'}), 400
 
-        # Validate token
-        if not token_auth.validate_token(token):
+        # Token is optional for public_read reviews
+        # Validate token if provided
+        if token and not token_auth.validate_token(token):
             return jsonify({'error': 'Invalid token'}), 401
 
         try:
@@ -126,17 +127,23 @@ def create_app(config_path=None, skip_semcode=False, keep_temp_trees=False):
         token = request.args.get('token')
         limit = request.args.get('limit', 50, type=int)
         superuser = request.args.get('superuser', 'false').lower() == 'true'
+        public_only = request.args.get('public_only', 'false').lower() == 'true'
 
-        if not token_auth.validate_token(token):
-            return jsonify({'error': 'Invalid token'}), 401
+        # Token is optional if requesting public_only reviews
+        if not public_only:
+            if not token or not token_auth.validate_token(token):
+                return jsonify({'error': 'Invalid or missing token'}), 401
 
-        # Check if user is actually a superuser if they're requesting superuser mode
-        is_superuser = token_auth.is_superuser(token)
-        if superuser and not is_superuser:
-            return jsonify({'error': 'Superuser access denied'}), 403
+            # Check if user is actually a superuser if they're requesting superuser mode
+            is_superuser = token_auth.is_superuser(token)
+            if superuser and not is_superuser:
+                return jsonify({'error': 'Superuser access denied'}), 403
+        else:
+            is_superuser = False
 
         try:
-            reviews = service.list_reviews(token, limit, superuser=superuser and is_superuser)
+            reviews = service.list_reviews(token, limit, superuser=superuser and is_superuser,
+                                          public_only=public_only)
             return jsonify({'reviews': reviews}), 200
         except Exception as e:
             print(f"Error listing reviews: {e}")
