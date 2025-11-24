@@ -20,7 +20,10 @@ Here is a list of config options it will likely need:
        name: "John Doe"
        date: "2025-01-15"
        superuser: false
+       public_read: false
    ```
+   The `public_read` field (optional, default false) allows reviews submitted
+   with this token to be readable without authentication via GET /review.
  - results path - directory where to store the results
  - [mcp] config - path to MCP config file (e.g., mcp-config.json)
  - [mcp] tools - comma-separated list of allowed MCP tools
@@ -158,7 +161,9 @@ failure can still be returned.
 
 Token passed in the request must be present in the token list file.
 Token on the GET requests must match the token on the POST request,
-unless the GET token has "superuser" set to true in the token list file.
+unless the GET token has "superuser" set to true in the token list file,
+or the review was submitted with a token that has "public_read" set to true
+(in which case the review can be retrieved without any token).
 
 3. UI
 

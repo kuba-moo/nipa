@@ -93,7 +93,7 @@ Get review status and results.
 
 **Query parameters:**
 - `id`: Review ID (required)
-- `token`: API token (required)
+- `token`: API token (optional for public_read reviews)
 - `format`: Format for results - `json`, `markup`, or `inline` (optional)
 
 **Response (without format):**
@@ -130,8 +130,9 @@ Get review status and results.
 List recent reviews for the authenticated token.
 
 **Query parameters:**
-- `token`: API token (required)
+- `token`: API token (required unless public_only=true)
 - `limit`: Max reviews to return (default: 50)
+- `public_only`: If true, return only public_read reviews (default: false)
 
 ### GET /api/status
 

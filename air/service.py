@@ -19,13 +19,15 @@ from .worker_pool import WorkerPool
 class AirService:
     """Main AIR service orchestrator"""
 
-    def __init__(self, config):
+    def __init__(self, config, token_auth=None):
         """Initialize AIR service
 
         Args:
             config: AirConfig instance
+            token_auth: TokenAuth instance (optional, needed for public_read support)
         """
         self.config = config
+        self.token_auth = token_auth
 
         # Initialize components
         self.storage = ReviewStorage(config.results_path)
@@ -145,12 +147,12 @@ class AirService:
         print(f"[submit_review] Successfully submitted: {review_id}")
         return review_id
 
-    def get_review(self, review_id: str, token: str, fmt: Optional[str] = None) -> Optional[Dict]:
+    def get_review(self, review_id: str, token: Optional[str] = None, fmt: Optional[str] = None) -> Optional[Dict]:
         """Get review status and results
 
         Args:
             review_id: Review ID
-            token: Authentication token
+            token: Authentication token (optional for public_read reviews)
             fmt: Optional format (json, markup, inline)
 
         Returns:
@@ -161,10 +163,17 @@ class AirService:
         if metadata is None:
             return None
 
-        # Check authorization (token must match or be superuser)
-        if metadata['token'] != token:
-            # We don't have superuser check here - would need to pass TokenAuth
-            # For now, just deny access
+        # Check authorization
+        # Allow access if:
+        # 1. Review's token has public_read enabled (look up in token DB), OR
+        # 2. Provided token matches the review's token, OR
+        # 3. Provided token is a superuser (if token_auth is available)
+        review_token = metadata['token']
+        is_public = self.token_auth.is_public_read(review_token) if self.token_auth else False
+        is_owner = token and review_token == token
+        is_superuser = token and self.token_auth and self.token_auth.is_superuser(token)
+
+        if not (is_public or is_owner or is_superuser):
             return None
 
         # Build response
@@ -223,18 +232,30 @@ class AirService:
 
         return result
 
-    def list_reviews(self, token: str, limit: int = 50, superuser: bool = False) -> List[Dict]:
+    def list_reviews(self, token: Optional[str] = None, limit: int = 50, superuser: bool = False,
+                     public_only: bool = False) -> List[Dict]:
         """List recent reviews for a token
 
         Args:
-            token: Authentication token
+            token: Authentication token (optional if public_only=True)
             limit: Maximum number of reviews to return
             superuser: If True, return all reviews regardless of token
+            public_only: If True, return only public_read reviews (no auth needed)
 
         Returns:
             List of review summaries
         """
-        reviews = self.storage.list_reviews(token, limit, superuser=superuser)
+        if public_only:
+            # Return only public reviews (check token DB for public_read status)
+            reviews = self.storage.list_reviews(token, limit, superuser=False)
+            # Filter to only reviews whose tokens have public_read enabled
+            if self.token_auth:
+                reviews = [r for r in reviews
+                          if self.token_auth.is_public_read(r.get('token', ''))]
+            else:
+                reviews = []
+        else:
+            reviews = self.storage.list_reviews(token, limit, superuser=superuser)
 
         # Return simplified view
         return [{

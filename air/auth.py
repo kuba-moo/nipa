@@ -30,7 +30,8 @@ class TokenAuth:
                         self.tokens[token] = {
                             'name': token_info.get('name', ''),
                             'date': token_info.get('date', ''),
-                            'superuser': token_info.get('superuser', False)
+                            'superuser': token_info.get('superuser', False),
+                            'public_read': token_info.get('public_read', False)
                         }
         except FileNotFoundError:
             # Create empty token file
@@ -60,6 +61,19 @@ class TokenAuth:
         if token not in self.tokens:
             return False
         return self.tokens[token].get('superuser', False)
+
+    def is_public_read(self, token: str) -> bool:
+        """Check if token has public_read privileges
+
+        Args:
+            token: Token string to check
+
+        Returns:
+            True if token has public_read enabled, False otherwise
+        """
+        if token not in self.tokens:
+            return False
+        return self.tokens[token].get('public_read', False)
 
     def get_token_info(self, token: str) -> Optional[Dict]:
         """Get information about a token
