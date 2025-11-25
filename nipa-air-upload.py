@@ -21,6 +21,62 @@ from core import NIPA_DIR, log, log_init
 from pw import Patchwork
 
 
+class PatchworkSeries:
+    """Represents a Patchwork series with its patches"""
+
+    def __init__(self, patchwork: Patchwork, series_id: int, check_name: str):
+        """Initialize series
+
+        Args:
+            patchwork: Patchwork client
+            series_id: Series ID
+            check_name: Check name to look for
+        """
+        self.patchwork = patchwork
+        self.series_id = series_id
+        self.check_name = check_name
+        self.series_data = None
+        self.patches = []
+        self.patches_ready = []
+
+        # Fetch series and patch data
+        self._fetch()
+
+    def _fetch(self):
+        """Fetch series and check which patches are ready"""
+        self.series_data = self.patchwork.get('series', self.series_id)
+        self.patches = self.series_data.get('patches', [])
+
+        # Check each patch for existing check
+        self.patches_ready = []
+        for i, patch in enumerate(self.patches):
+            patch_id = patch['id']
+            try:
+                # Fetch checks for this patch
+                existing_checks = self.patchwork.get_all(f'patches/{patch_id}/checks')
+                check_exists = any(c.get('context') == self.check_name for c in existing_checks)
+                self.patches_ready.append(check_exists)
+            except Exception as e:
+                print(f"    Warning: Error fetching checks for patch {i+1} (id={patch_id}): {e}")
+                self.patches_ready.append(False)
+
+    def all_patches_ready(self) -> bool:
+        """Check if all patches have the check entry
+
+        Returns:
+            True if all patches have the check entry
+        """
+        return all(self.patches_ready)
+
+    def ready_count(self) -> int:
+        """Get count of patches that are ready
+
+        Returns:
+            Number of patches with check entry
+        """
+        return sum(self.patches_ready)
+
+
 class AirPatchworkSync:
     """Synchronize AIR reviews to Patchwork checks"""
 
@@ -132,12 +188,12 @@ class AirPatchworkSync:
             print(f"Error fetching review {review_id}: {e}")
             return None
 
-    def post_patchwork_check(self, series_id: int, review_id: str,
+    def post_patchwork_check(self, pw_series: PatchworkSeries, review_id: str,
                             review_data: Dict) -> bool:
         """Post check result to Patchwork
 
         Args:
-            series_id: Patchwork series ID
+            pw_series: PatchworkSeries object with patches
             review_id: AIR review ID
             review_data: Review data with 'review' field containing per-patch results
 
@@ -147,22 +203,14 @@ class AirPatchworkSync:
         # Build check URL
         check_url = f"{self.air_server}/ai-review.html?id={review_id}"
 
+        # Get review results (one per patch)
+        reviews = review_data.get('review', [])
+
+        print(f"  Posting checks to {len(pw_series.patches)} patches in series {pw_series.series_id}")
+
         try:
-            # Fetch series to get individual patches
-            series = self.patchwork.get('series', series_id)
-            patches = series.get('patches', [])
-
-            if not patches:
-                print(f"  Warning: Series {series_id} has no patches")
-                return False
-
-            # Get review results (one per patch)
-            reviews = review_data.get('review', [])
-
-            print(f"  Posting checks to {len(patches)} patches in series {series_id}")
-
             # Post check to each patch in the series
-            for i, patch in enumerate(patches):
+            for i, patch in enumerate(pw_series.patches):
                 patch_id = patch['id']
 
                 # Check if this patch has review comments
@@ -174,7 +222,7 @@ class AirPatchworkSync:
                 state = 'warning' if patch_has_comments else 'success'
                 desc = 'AI review found issues' if patch_has_comments else 'AI review completed'
 
-                print(f"    Patch {i+1}/{len(patches)} (id={patch_id}): {state}")
+                print(f"    Patch {i+1}/{len(pw_series.patches)} (id={patch_id}): {state}")
 
                 self.patchwork.post_check(patch=patch_id, name=self.check_name,
                                          state=state, url=check_url, desc=desc)
@@ -191,7 +239,7 @@ class AirPatchworkSync:
             review: Review summary from AIR
 
         Returns:
-            True if processed (whether matched or not)
+            True if processed successfully (checks posted to all patches)
         """
         review_id = review.get('review_id')
         status = review.get('status')
@@ -217,13 +265,31 @@ class AirPatchworkSync:
 
         print(f"  Patchwork series ID: {pw_series_id}")
 
-        # Post check to Patchwork (will check each patch individually)
-        success = self.post_patchwork_check(pw_series_id, review_id, review_data)
+        # Fetch series and check if patches are ready
+        try:
+            pw_series = PatchworkSeries(self.patchwork, pw_series_id, self.check_name)
+        except Exception as e:
+            print(f"  Error fetching series: {e}")
+            return False
+
+        if not pw_series.patches:
+            print(f"  Warning: Series has no patches")
+            return True
+
+        # Check if all patches have the check entry (prevents race with initial scan)
+        if not pw_series.all_patches_ready():
+            ready = pw_series.ready_count()
+            total = len(pw_series.patches)
+            print(f"  Not ready: only {ready}/{total} patches have check '{self.check_name}' (will retry later)")
+            return False
+
+        # Post check to Patchwork
+        success = self.post_patchwork_check(pw_series, review_id, review_data)
 
         if success:
-            print(f"  Successfully posted check to Patchwork")
+            print(f"  Successfully posted checks to all patches")
 
-        return True
+        return success
 
     def run_once(self):
         """Run one sync iteration"""
