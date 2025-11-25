@@ -1,0 +1,33 @@
+# NIPA AIR Upload Configuration Example
+
+[air]
+# AIR service URL for API calls
+url = http://localhost:5000
+
+# AIR service URL for links (if different from API URL)
+# This is used to construct the check URL that users will click on
+server = https://air.example.com
+
+# Optional: AIR API token for authenticated access
+# Only needed if AIR requires authentication
+#token = your_air_token_here
+
+[patchwork]
+# Standard Patchwork configuration
+server = patchwork.kernel.org
+use_ssl = true
+token = your_patchwork_token_here
+user = 12345
+
+# Optional: Check name to use when posting to Patchwork
+# Default: ai-review
+check_name = ai-review
+
+[service]
+# How often to poll for new reviews (in seconds)
+# Default: 300 (5 minutes)
+poll_interval = 300
+
+# Path to state file for tracking processed reviews
+# Default: nipa-air-upload.state
+state_file = /var/lib/nipa/nipa-air-upload.state
