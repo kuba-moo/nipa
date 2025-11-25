@@ -414,7 +414,13 @@
         }
 
         const reviewId = getUrlParam('id');
-        const token = getUrlParam('token');
+        let token = getUrlParam('token');
+
+        // If no token in URL, try localStorage
+        if (!token) {
+            token = localStorage.getItem('apiToken');
+        }
+
         let currentFormat = 'inline';  // Default to inline/Review format
         let inlineReviews = [];  // Store inline reviews for navigation coloring
 
@@ -431,6 +437,7 @@
             if (token) {
                 url += `&token=${encodeURIComponent(token)}`;
             }
+            // If no token, the API will check if review is public_read enabled
             if (format) {
                 url += `&format=${format}`;
             }
