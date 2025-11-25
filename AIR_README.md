@@ -198,6 +198,39 @@ Reviews are stored in the following structure:
         └── ...
 ```
 
+## Patchwork Integration
+
+The `nipa-air-upload.py` service can automatically post AIR review results as checks to Patchwork.
+
+### Setup
+
+1. Configure the service:
+```bash
+cp nipa-air-upload.conf.example my-upload.conf
+# Edit my-upload.conf with your settings
+```
+
+2. Run the service:
+```bash
+# Run once (for testing)
+./nipa-air-upload.py --once my-upload.conf
+
+# Run continuously
+./nipa-air-upload.py my-upload.conf
+```
+
+### How it works
+
+- Polls AIR periodically for public reviews
+- For each new completed review with a Patchwork series ID:
+  - Fetches the series from Patchwork
+  - Checks if the series project matches configured project
+  - Posts a check result to Patchwork:
+    - **success** (pass) - if no inline review comments
+    - **warning** - if inline review comments exist
+  - Check URL links to `ai-review.html` for full results
+- Maintains state file to avoid re-processing reviews
+
 ## Architecture
 
 ### Components
