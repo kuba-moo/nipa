@@ -132,41 +132,20 @@ class AirPatchworkSync:
             print(f"Error fetching review {review_id}: {e}")
             return None
 
-    def has_review_comments(self, review_data: Dict) -> bool:
-        """Check if review has any inline comments
-
-        Args:
-            review_data: Review data with 'review' field
-
-        Returns:
-            True if any patch has review comments
-        """
-        reviews = review_data.get('review', [])
-        for review in reviews:
-            if review and review.strip():
-                return True
-        return False
-
     def post_patchwork_check(self, series_id: int, review_id: str,
-                            has_comments: bool) -> bool:
+                            review_data: Dict) -> bool:
         """Post check result to Patchwork
 
         Args:
             series_id: Patchwork series ID
             review_id: AIR review ID
-            has_comments: Whether review has comments
+            review_data: Review data with 'review' field containing per-patch results
 
         Returns:
             True if successful
         """
-        # Determine check status
-        state = 'warning' if has_comments else 'success'
-
         # Build check URL
         check_url = f"{self.air_server}/ai-review.html?id={review_id}"
-
-        # Build check description
-        desc = 'AI review completed' if not has_comments else 'AI review found issues'
 
         try:
             # Fetch series to get individual patches
@@ -177,11 +156,26 @@ class AirPatchworkSync:
                 print(f"  Warning: Series {series_id} has no patches")
                 return False
 
-            print(f"  Posting check to {len(patches)} patches in series {series_id}: {state}")
+            # Get review results (one per patch)
+            reviews = review_data.get('review', [])
+
+            print(f"  Posting checks to {len(patches)} patches in series {series_id}")
 
             # Post check to each patch in the series
-            for patch in patches:
+            for i, patch in enumerate(patches):
                 patch_id = patch['id']
+
+                # Check if this patch has review comments
+                patch_has_comments = False
+                if i < len(reviews) and reviews[i] and reviews[i].strip():
+                    patch_has_comments = True
+
+                # Determine state and description for this patch
+                state = 'warning' if patch_has_comments else 'success'
+                desc = 'AI review found issues' if patch_has_comments else 'AI review completed'
+
+                print(f"    Patch {i+1}/{len(patches)} (id={patch_id}): {state}")
+
                 self.patchwork.post_check(patch=patch_id, name=self.check_name,
                                          state=state, url=check_url, desc=desc)
 
@@ -223,12 +217,8 @@ class AirPatchworkSync:
 
         print(f"  Patchwork series ID: {pw_series_id}")
 
-        # Check if review has comments
-        has_comments = self.has_review_comments(review_data)
-        print(f"  Has review comments: {has_comments}")
-
-        # Post check to Patchwork
-        success = self.post_patchwork_check(pw_series_id, review_id, has_comments)
+        # Post check to Patchwork (will check each patch individually)
+        success = self.post_patchwork_check(pw_series_id, review_id, review_data)
 
         if success:
             print(f"  Successfully posted check to Patchwork")
