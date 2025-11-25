@@ -312,6 +312,15 @@
             font-weight: 500;
         }
 
+        .feedback-badge {
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
         .status-queued {
             background: #e3f2fd;
             color: #1976d2;
@@ -512,6 +521,10 @@
                 <label style="display: flex; align-items: center; gap: 6px; font-size: 14px;">
                     <input type="checkbox" id="superuserMode">
                     All users
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 14px;">
+                    <input type="checkbox" id="feedbackOnlyMode">
+                    Only reviews with feedback
                 </label>
             </div>
             <div id="reviewsList">
@@ -722,24 +735,65 @@
         async function listReviews() {
             const token = getToken();
             const superuser = document.getElementById('superuserMode').checked;
+            const feedbackOnly = document.getElementById('feedbackOnlyMode').checked;
 
-            if (!token) {
+            // Allow loading public reviews if no token and "All users" is checked
+            const publicMode = !token && superuser;
+
+            if (!token && !publicMode) {
                 document.getElementById('reviewsList').innerHTML =
-                    '<p class="small">Please enter your API token at the top</p>';
+                    '<p class="small">Please enter your API token at the top, or check "All users" to see public reviews</p>';
                 return;
             }
 
             try {
-                let url = `${API_BASE}/reviews?token=${token}&limit=20`;
-                if (superuser) {
-                    url += '&superuser=true';
+                // Show loading
+                document.getElementById('reviewsList').innerHTML = '<p class="small">Loading reviews...</p>';
+
+                let url = `${API_BASE}/reviews?limit=50`;
+
+                if (publicMode) {
+                    // No token, loading public reviews
+                    url += '&public_only=true';
+                } else {
+                    // Has token
+                    url += `&token=${token}`;
+                    if (superuser) {
+                        url += '&superuser=true';
+                    }
                 }
 
                 const response = await fetch(url);
                 const result = await response.json();
 
                 if (response.ok) {
-                    displayReviewsList(result.reviews);
+                    // Fetch full details for done reviews to check for feedback
+                    const reviewsWithFeedback = await Promise.all(result.reviews.map(async (review) => {
+                        if (review.status === 'done') {
+                            try {
+                                let detailUrl = `${API_BASE}/review?id=${review.review_id}&format=inline`;
+                                if (token) {
+                                    detailUrl += `&token=${token}`;
+                                }
+                                const detailResponse = await fetch(detailUrl);
+                                const detailData = await detailResponse.json();
+
+                                // Check if any patch has feedback
+                                const hasFeedback = detailData.review && detailData.review.some(r => r && r.trim());
+                                return { ...review, hasFeedback };
+                            } catch (e) {
+                                return { ...review, hasFeedback: false };
+                            }
+                        }
+                        return { ...review, hasFeedback: false };
+                    }));
+
+                    // Filter if needed
+                    const filteredReviews = feedbackOnly
+                        ? reviewsWithFeedback.filter(r => r.hasFeedback)
+                        : reviewsWithFeedback;
+
+                    displayReviewsList(filteredReviews, publicMode ? '' : token);
                 } else {
                     document.getElementById('reviewsList').innerHTML =
                         `<div class="message error">Error: ${result.error}</div>`;
@@ -835,7 +889,7 @@
             container.innerHTML = html;
         }
 
-        function displayReviewsList(reviews) {
+        function displayReviewsList(reviews, token = null) {
             const container = document.getElementById('reviewsList');
 
             if (reviews.length === 0) {
@@ -843,13 +897,25 @@
                 return;
             }
 
+            // Use provided token, or try to get current token
+            if (!token) {
+                token = getToken();
+            }
+
             let html = '<ul class="review-list">';
             reviews.forEach(review => {
+                const feedbackBadge = review.hasFeedback
+                    ? '<span class="feedback-badge">📝 Has feedback</span>'
+                    : '';
+
                 html += `
-                    <li class="review-item status-${review.status}">
+                    <li class="review-item status-${review.status}" onclick="openReview('${review.review_id}', '${token}')" style="cursor: pointer;">
                         <div class="review-header">
                             <span class="review-id">${review.review_id}</span>
-                            <span class="status-badge status-${review.status}">${review.status}</span>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                ${feedbackBadge}
+                                <span class="status-badge status-${review.status}">${review.status}</span>
+                            </div>
                         </div>
                         <div class="review-details">
                             <strong>${review.tree}</strong> - ${review.patch_count} patch(es)
@@ -862,6 +928,10 @@
             html += '</ul>';
 
             container.innerHTML = html;
+        }
+
+        function openReview(reviewId, token) {
+            window.open(`ai-review.html?id=${reviewId}&token=${token}`, '_blank');
         }
 
         function showMessage(elementId, message, type) {
