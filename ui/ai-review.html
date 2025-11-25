@@ -90,6 +90,14 @@
             border-bottom: 2px solid var(--accent-primary);
             padding-bottom: 10px;
             margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        h1 img {
+            width: 40px;
+            height: 40px;
         }
 
         .theme-toggle {
@@ -301,7 +309,10 @@
 </head>
 <body>
     <div class="header-controls">
-        <h1>AI Review Results</h1>
+        <h1>
+            <img src="/favicon.png" alt="NIPA AIR Logo">
+            AI Review Results
+        </h1>
         <button class="theme-toggle" onclick="toggleTheme()">
             <span id="theme-icon">🌙</span> Toggle Theme
         </button>
