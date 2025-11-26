@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NIPA AIR - AI Review Service</title>
     <link rel="icon" type="image/png" href="/favicon.png">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <style>
         :root {
             --bg-primary: #f5f5f5;
@@ -155,6 +157,15 @@
 
         .section {
             margin-bottom: 40px;
+        }
+
+        .chart-container {
+            background: var(--bg-secondary);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px var(--shadow);
+            position: relative;
+            height: 400px;
         }
 
         h2 {
@@ -443,6 +454,14 @@
             </div>
         </div>
 
+        <!-- Review History Chart -->
+        <div class="section">
+            <h2>Review History</h2>
+            <div class="chart-container">
+                <canvas id="reviewChart"></canvas>
+            </div>
+        </div>
+
         <!-- Submit Review -->
         <div class="section">
             <h2>Submit Review</h2>
@@ -572,6 +591,184 @@
         loadSavedToken();
         loadStatus();
         setInterval(loadStatus, 10000); // Refresh every 10 seconds
+
+        // Initialize and update review chart
+        let reviewChart = null;
+        loadReviewChart();
+        setInterval(loadReviewChart, 30000); // Refresh every 30 seconds
+
+        // Refresh chart and review list when filters change
+        document.getElementById('superuserMode').addEventListener('change', function() {
+            loadReviewChart();
+            listReviews();
+        });
+        document.getElementById('feedbackOnlyMode').addEventListener('change', function() {
+            listReviews();
+        });
+
+        async function loadReviewChart() {
+            const token = getToken();
+            const superuser = document.getElementById('superuserMode').checked;
+
+            // Allow loading public reviews if no token and "All users" is checked
+            const publicMode = !token && superuser;
+
+            if (!token && !publicMode) {
+                return; // Skip chart if no token and not in public mode
+            }
+
+            try {
+                // Fetch review data - get more reviews to build time series
+                // Use same superuser setting as the review list
+                let url = `${API_BASE}/reviews?limit=200`;
+
+                if (publicMode) {
+                    // No token, loading public reviews
+                    url += '&public_only=true';
+                } else {
+                    // Has token
+                    url += `&token=${token}`;
+                    if (superuser) {
+                        url += '&superuser=true';
+                    }
+                }
+
+                const response = await fetch(url);
+                const result = await response.json();
+
+                if (!response.ok || !result.reviews) {
+                    console.error('Failed to fetch reviews:', result);
+                    return;
+                }
+
+                console.log(`Fetched ${result.reviews.length} reviews for chart`);
+
+                // Group reviews by 6-hour time buckets and status
+                const dataByBucket = {};
+
+                result.reviews.forEach(review => {
+                    // Parse date and round to nearest 6-hour bucket
+                    const timestamp = new Date(review.date);
+                    const hours = timestamp.getHours();
+                    const bucketHour = Math.floor(hours / 6) * 6; // 0, 6, 12, or 18
+
+                    // Create bucket key (ISO format with hour set to bucket start)
+                    timestamp.setHours(bucketHour, 0, 0, 0);
+                    const bucketKey = timestamp.toISOString();
+
+                    if (!dataByBucket[bucketKey]) {
+                        dataByBucket[bucketKey] = {
+                            queued: 0,
+                            'in-progress': 0,
+                            done: 0,
+                            error: 0
+                        };
+                    }
+
+                    // Count by status
+                    const status = review.status;
+                    if (dataByBucket[bucketKey][status] !== undefined) {
+                        dataByBucket[bucketKey][status]++;
+                    } else {
+                        console.warn(`Unknown status: ${status} for review ${review.review_id}`);
+                    }
+                });
+
+                console.log('Data by 6-hour bucket:', dataByBucket);
+
+                // Convert to sorted arrays
+                const buckets = Object.keys(dataByBucket).sort();
+                const doneData = buckets.map(bucket => ({ x: bucket, y: dataByBucket[bucket].done }));
+                const errorData = buckets.map(bucket => ({ x: bucket, y: dataByBucket[bucket].error }));
+
+                console.log('Chart data - Done:', doneData, 'Error:', errorData);
+
+                // Create or update chart
+                const ctx = document.getElementById('reviewChart');
+
+                if (reviewChart) {
+                    // Update existing chart
+                    reviewChart.data.datasets[0].data = doneData;
+                    reviewChart.data.datasets[1].data = errorData;
+                    reviewChart.update();
+                } else {
+                    // Create new chart
+                    reviewChart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            datasets: [
+                                {
+                                    label: 'Completed',
+                                    data: doneData,
+                                    borderColor: '#28a745',
+                                    backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                                    tension: 0.1,
+                                    fill: true
+                                },
+                                {
+                                    label: 'Errors',
+                                    data: errorData,
+                                    borderColor: '#dc3545',
+                                    backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                                    tension: 0.1,
+                                    fill: true
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            interaction: {
+                                mode: 'index',
+                                intersect: false,
+                            },
+                            plugins: {
+                                legend: {
+                                    position: 'top',
+                                    labels: {
+                                        color: getComputedStyle(document.documentElement).getPropertyValue('--text-primary')
+                                    }
+                                },
+                                tooltip: {
+                                    mode: 'index',
+                                    intersect: false
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    type: 'time',
+                                    time: {
+                                        unit: 'hour',
+                                        stepSize: 6,
+                                        displayFormats: {
+                                            hour: 'MMM d HH:mm'
+                                        }
+                                    },
+                                    grid: {
+                                        color: getComputedStyle(document.documentElement).getPropertyValue('--border-color')
+                                    },
+                                    ticks: {
+                                        color: getComputedStyle(document.documentElement).getPropertyValue('--text-primary')
+                                    }
+                                },
+                                y: {
+                                    beginAtZero: true,
+                                    grid: {
+                                        color: getComputedStyle(document.documentElement).getPropertyValue('--border-color')
+                                    },
+                                    ticks: {
+                                        color: getComputedStyle(document.documentElement).getPropertyValue('--text-primary'),
+                                        precision: 0
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading review chart:', error);
+            }
+        }
 
         // Input type switcher
         document.getElementById('inputType').addEventListener('change', function() {
@@ -969,6 +1166,27 @@
 
             // Update button text and icon
             updateThemeButton(newTheme);
+
+            // Update chart colors if chart exists
+            updateChartColors();
+        }
+
+        function updateChartColors() {
+            if (!reviewChart) return;
+
+            const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-primary');
+            const borderColor = getComputedStyle(document.documentElement).getPropertyValue('--border-color');
+
+            // Update legend colors
+            reviewChart.options.plugins.legend.labels.color = textColor;
+
+            // Update axis colors
+            reviewChart.options.scales.x.grid.color = borderColor;
+            reviewChart.options.scales.x.ticks.color = textColor;
+            reviewChart.options.scales.y.grid.color = borderColor;
+            reviewChart.options.scales.y.ticks.color = textColor;
+
+            reviewChart.update();
         }
 
         function updateThemeButton(theme) {
