@@ -285,6 +285,7 @@ class SetupWorker:
                                       cwd=wt_path, capture_output=True, text=True)
                 if result.returncode != 0:
                     log_thread(f"Failed to apply patch {i}: {result.stderr}")
+                    subprocess.run(['git', 'am', '--abort'], cwd=wt_path)
                     self.storage.update_review_status(review_id, 'error',
                                                      f'Failed to apply patch {i}')
                     self.storage.write_message(token, review_id,
@@ -307,6 +308,15 @@ class SetupWorker:
                 # Add all new commits
                 commit_hashes.extend(new_commits)
 
+            except Exception as e:
+                log_thread(f"Exception while applying patch {i}: {e}")
+                # Abort any in-progress git am to return to clean state
+                subprocess.run(['git', 'am', '--abort'], cwd=wt_path)
+                self.storage.update_review_status(review_id, 'error',
+                                                 f'Error applying patch {i}')
+                self.storage.write_message(token, review_id,
+                                          f'Error applying patch {i}: {str(e)}')
+                return None
             finally:
                 os.unlink(patch_file)
 
