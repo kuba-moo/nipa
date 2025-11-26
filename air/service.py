@@ -49,20 +49,20 @@ class AirService:
             except Exception as e:
                 print(f"Failed to initialize Patchwork: {e}")
 
-        # Initialize workers
-        self.setup_worker = SetupWorker(config, self.worktree_mgr, self.storage,
-                                       self.temp_copy_queue, self.patchwork)
+        # Initialize LLM worker (setup workers created per-thread in WorkerPool)
         self.llm_worker = LLMWorker(config, self.worktree_mgr, self.storage)
 
         # Initialize worker pool with setup and LLM workers
         self.worker_pool = WorkerPool(
             num_setup_workers=config.max_work_trees,
             num_llm_workers=config.max_claude_runs,
-            setup_worker=self.setup_worker,
+            config=config,
+            storage=self.storage,
             llm_worker=self.llm_worker,
             review_queue=self.queue,
             temp_copy_queue=self.temp_copy_queue,
-            worktree_mgr=self.worktree_mgr
+            worktree_mgr=self.worktree_mgr,
+            patchwork=self.patchwork
         )
 
         # Start worker threads
