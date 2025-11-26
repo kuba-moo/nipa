@@ -23,7 +23,7 @@ class WorkTreeManager:
         """
         self.git_tree = git_tree
         self.max_work_trees = max_work_trees
-        self.work_trees = {}  # work_tree_id -> {'path': path, 'in_use': bool}
+        self.work_trees = {}  # work_tree_id -> path
         self.lock = Lock()
 
         # Initialize work trees
@@ -47,33 +47,7 @@ class WorkTreeManager:
                     log_thread(f"Error creating work tree {wt_name}: {e}")
                     raise
 
-            self.work_trees[i] = {
-                'path': wt_path,
-                'in_use': False
-            }
-
-    def acquire_work_tree(self) -> Optional[int]:
-        """Acquire an available work tree
-
-        Returns:
-            Work tree ID if available, None otherwise
-        """
-        with self.lock:
-            for wt_id, wt_info in self.work_trees.items():
-                if not wt_info['in_use']:
-                    wt_info['in_use'] = True
-                    return wt_id
-            return None
-
-    def release_work_tree(self, wt_id: int):
-        """Release a work tree
-
-        Args:
-            wt_id: Work tree ID to release
-        """
-        with self.lock:
-            if wt_id in self.work_trees:
-                self.work_trees[wt_id]['in_use'] = False
+            self.work_trees[i] = wt_path
 
     def get_work_tree_path(self, wt_id: int) -> Optional[str]:
         """Get the path to a work tree
@@ -84,9 +58,7 @@ class WorkTreeManager:
         Returns:
             Path to work tree or None
         """
-        if wt_id in self.work_trees:
-            return self.work_trees[wt_id]['path']
-        return None
+        return self.work_trees.get(wt_id)
 
     def create_temp_copy(self, wt_id: int, commit_hash: str) -> str:
         """Create a temporary copy of work tree for reviewing a specific commit
