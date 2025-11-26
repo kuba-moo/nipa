@@ -16,7 +16,7 @@ from .log_helper import log_thread
 class SetupWorker:
     """Worker for setting up patches/commits for review (git operations, semcode indexing)"""
 
-    def __init__(self, config, worktree_mgr, storage, temp_copy_queue, patchwork: Optional[Patchwork] = None):
+    def __init__(self, config, worktree_mgr, storage, temp_copy_queue, wt_id: int, patchwork: Optional[Patchwork] = None):
         """Initialize setup worker
 
         Args:
@@ -24,26 +24,27 @@ class SetupWorker:
             worktree_mgr: WorkTreeManager instance
             storage: ReviewStorage instance
             temp_copy_queue: TempCopyQueue instance
+            wt_id: Dedicated work tree ID for this worker
             patchwork: Patchwork instance (optional)
         """
         self.config = config
         self.worktree_mgr = worktree_mgr
         self.storage = storage
         self.temp_copy_queue = temp_copy_queue
+        self.wt_id = wt_id
         self.patchwork = patchwork
 
-    def worker_loop(self, worker_id: int, wt_id: int, review_queue):
+    def worker_loop(self, worker_id: int, review_queue):
         """Main worker loop for a setup worker
 
         Args:
             worker_id: Worker ID number
-            wt_id: Dedicated work tree ID for this worker
             review_queue: ReviewQueue to get review requests from
         """
         # Initialize logging for this thread
         log_init("stdout", "")
 
-        log_thread(f"Setup worker {worker_id} started with work tree {wt_id}")
+        log_thread(f"Setup worker {worker_id} started with work tree {self.wt_id}")
 
         while True:
             # Get next review request
@@ -55,7 +56,7 @@ class SetupWorker:
             log_thread(f"Setup worker {worker_id} processing review {review_id}")
 
             try:
-                self.process_review(wt_id, request)
+                self.process_review(request)
             except Exception as e:
                 log_thread(f"Error in setup worker {worker_id} processing {review_id}: {e}")
                 import traceback
@@ -63,11 +64,10 @@ class SetupWorker:
                 if review_id:
                     self.storage.update_review_status(review_id, 'error', f'Setup failed: {str(e)}')
 
-    def process_review(self, wt_id: int, request: Dict):
+    def process_review(self, request: Dict):
         """Process a review request (setup phase only)
 
         Args:
-            wt_id: Work tree ID to use
             request: Review request dictionary
         """
         review_id = request['review_id']
@@ -77,14 +77,14 @@ class SetupWorker:
         self.storage.update_review_status(review_id, 'in-progress')
 
         # Setup remote
-        remote_name, branch = self._setup_remote(wt_id, request)
+        remote_name, branch = self._setup_remote(request)
         if remote_name is None:
             self.storage.update_review_status(review_id, 'error', 'Failed to setup git remote')
             self.storage.write_message(token, review_id, 'Failed to setup git remote')
             return
 
         # Get commit hashes
-        commit_hashes, git_range = self._get_commit_hashes(wt_id, request, remote_name, branch, token, review_id)
+        commit_hashes, git_range = self._get_commit_hashes(request, remote_name, branch, token, review_id)
         if commit_hashes is None:
             return
 
@@ -93,7 +93,7 @@ class SetupWorker:
 
         # Run semcode indexing
         if not self.config.skip_semcode:
-            if not self._run_semcode_index(wt_id, git_range):
+            if not self._run_semcode_index(git_range):
                 self.storage.update_review_status(review_id, 'error', 'Failed to run semcode indexing')
                 self.storage.write_message(token, review_id, 'Failed to run semcode indexing')
                 return
@@ -111,7 +111,7 @@ class SetupWorker:
                 continue
 
             # Create temp copy
-            temp_path = self.worktree_mgr.create_temp_copy(wt_id, commit_hash)
+            temp_path = self.worktree_mgr.create_temp_copy(self.wt_id, commit_hash)
 
             # Reset to commit
             if not self.worktree_mgr.git_reset_hard(temp_path, commit_hash):
@@ -136,11 +136,10 @@ class SetupWorker:
 
         log_thread(f"Setup complete for review {review_id}, queued {len(commit_hashes)} temp copies")
 
-    def _setup_remote(self, wt_id: int, request: Dict) -> Tuple[Optional[str], Optional[str]]:
+    def _setup_remote(self, request: Dict) -> Tuple[Optional[str], Optional[str]]:
         """Setup git remote for the review
 
         Args:
-            wt_id: Work tree ID
             request: Review request
 
         Returns:
@@ -159,25 +158,24 @@ class SetupWorker:
             return None, None
 
         # Fetch the remote
-        if not self.worktree_mgr.git_fetch(wt_id, remote_name):
+        if not self.worktree_mgr.git_fetch(self.wt_id, remote_name):
             log_thread(f"Failed to fetch remote {remote_name}")
             return None, None
 
         # Determine branch
         if branch is None:
-            branch = self.worktree_mgr.get_default_branch(wt_id, remote_name)
+            branch = self.worktree_mgr.get_default_branch(self.wt_id, remote_name)
             if branch is None:
                 log_thread(f"Failed to determine default branch for {remote_name}")
                 return None, None
 
         return remote_name, branch
 
-    def _get_commit_hashes(self, wt_id: int, request: Dict, remote_name: str,
+    def _get_commit_hashes(self, request: Dict, remote_name: str,
                           branch: str, token: str, review_id: str) -> Tuple[Optional[List[str]], Optional[str]]:
         """Get list of commit hashes to review
 
         Args:
-            wt_id: Work tree ID
             request: Review request
             remote_name: Git remote name
             branch: Git branch name
@@ -187,7 +185,7 @@ class SetupWorker:
         Returns:
             Tuple of (commit_hashes list, git_range) or (None, None) on error
         """
-        wt_path = self.worktree_mgr.get_work_tree_path(wt_id)
+        wt_path = self.worktree_mgr.get_work_tree_path(self.wt_id)
 
         # Case 1: Hash or hash range provided
         if 'hash' in request and request['hash']:
@@ -202,7 +200,7 @@ class SetupWorker:
 
             # Verify commits exist
             for h in [hash_str.split('..')[0] if '..' in hash_str else hash_str]:
-                if not self.worktree_mgr.check_commit_exists(wt_id, h):
+                if not self.worktree_mgr.check_commit_exists(self.wt_id, h):
                     self.storage.update_review_status(review_id, 'error', f'Commit {h} not found')
                     self.storage.write_message(token, review_id, f'Commit {h} not found')
                     return None, None
@@ -338,17 +336,16 @@ class SetupWorker:
         # rev-list returns newest first, we want oldest first
         return list(reversed(hashes))
 
-    def _run_semcode_index(self, wt_id: int, git_range: str) -> bool:
+    def _run_semcode_index(self, git_range: str) -> bool:
         """Run semcode indexing
 
         Args:
-            wt_id: Work tree ID
             git_range: Git range to index
 
         Returns:
             True if successful, False otherwise
         """
-        wt_path = self.worktree_mgr.get_work_tree_path(wt_id)
+        wt_path = self.worktree_mgr.get_work_tree_path(self.wt_id)
 
         log_thread(f"Running semcode-index for range {git_range}")
         try:
