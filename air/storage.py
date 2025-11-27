@@ -9,6 +9,8 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from threading import Lock
 
+from .claude_json import extract_cost_from_review
+
 
 class ReviewStorage:
     """Manages storage of review results and metadata"""
@@ -199,6 +201,20 @@ class ReviewStorage:
 
             # Check if all patches are complete
             if completed >= total and total > 0:
+                # Calculate total cost from all review.json files
+                token = self.reviews[review_id]['token']
+                review_dir = self.get_review_dir(token, review_id)
+                total_cost = 0.0
+
+                for i in range(1, total + 1):
+                    patch_dir = os.path.join(review_dir, str(i))
+                    review_json = os.path.join(patch_dir, 'review.json')
+                    if os.path.exists(review_json):
+                        total_cost += extract_cost_from_review(review_json)
+
+                if total_cost > 0:
+                    self.reviews[review_id]['cost_usd'] = round(total_cost, 4)
+
                 # All patches done - mark review as complete or error
                 if failed > 0:
                     self.reviews[review_id]['status'] = 'error'
