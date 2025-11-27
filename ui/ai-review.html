@@ -659,7 +659,9 @@
 
         function formatDate(dateString) {
             if (!dateString) return 'N/A';
-            const date = new Date(dateString);
+            // Backend stores dates in UTC without 'Z' suffix
+            // Add 'Z' to explicitly mark as UTC for proper parsing
+            const date = new Date(dateString + 'Z');
             return date.toLocaleString();
         }
     </script>

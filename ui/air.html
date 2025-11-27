@@ -895,7 +895,7 @@
 
                 result.reviews.forEach(review => {
                     // Parse date and round to nearest 6-hour bucket
-                    const timestamp = new Date(review.date);
+                    const timestamp = parseUTCDate(review.date);
                     const hours = timestamp.getHours();
                     const bucketHour = Math.floor(hours / 6) * 6; // 0, 6, 12, or 18
 
@@ -1374,6 +1374,21 @@
             }
         }
 
+        // Parse UTC date string and convert to local time
+        function parseUTCDate(utcDateString) {
+            if (!utcDateString) return null;
+            // Backend stores dates in UTC without 'Z' suffix
+            // Add 'Z' to explicitly mark as UTC for proper parsing
+            const date = new Date(utcDateString + 'Z');
+            return date;
+        }
+
+        // Format UTC date string to localized string
+        function formatUTCDate(utcDateString) {
+            const date = parseUTCDate(utcDateString);
+            return date ? date.toLocaleString() : 'N/A';
+        }
+
         function formatDuration(seconds) {
             if (seconds < 60) {
                 return `${Math.round(seconds)}s`;
@@ -1405,18 +1420,18 @@
                 html += `<p><strong>Source:</strong> Uploaded patches</p>`;
             }
 
-            html += `<p><strong>Date:</strong> ${new Date(data.date).toLocaleString()}</p>`;
+            html += `<p><strong>Date:</strong> ${formatUTCDate(data.date)}</p>`;
 
             // Calculate and display timing information
             if (data.start) {
-                const queueTime = (new Date(data.start) - new Date(data.date)) / 1000; // seconds
+                const queueTime = (parseUTCDate(data.start) - parseUTCDate(data.date)) / 1000; // seconds
                 if (queueTime >= 10) {
                     html += `<p><strong>Queue time:</strong> ${formatDuration(queueTime)}</p>`;
                 }
 
                 // Setup time (git operations, applying patches, etc.)
                 if (data['start-llm']) {
-                    const setupTime = (new Date(data['start-llm']) - new Date(data.start)) / 1000;
+                    const setupTime = (parseUTCDate(data['start-llm']) - parseUTCDate(data.start)) / 1000;
                     if (setupTime >= 1) {
                         html += `<p><strong>Setup time:</strong> ${formatDuration(setupTime)}</p>`;
                     }
@@ -1425,13 +1440,13 @@
 
             // LLM time
             if (data['start-llm'] && data.end) {
-                const llmTime = (new Date(data.end) - new Date(data['start-llm'])) / 1000;
+                const llmTime = (parseUTCDate(data.end) - parseUTCDate(data['start-llm'])) / 1000;
                 html += `<p><strong>LLM time:</strong> ${formatDuration(llmTime)}</p>`;
             }
 
             // Total processing time (if complete but no LLM start recorded)
             if (data.start && data.end && !data['start-llm']) {
-                const processingTime = (new Date(data.end) - new Date(data.start)) / 1000;
+                const processingTime = (parseUTCDate(data.end) - parseUTCDate(data.start)) / 1000;
                 html += `<p><strong>Processing time:</strong> ${formatDuration(processingTime)}</p>`;
             }
 
@@ -1524,7 +1539,7 @@
                                     ${cost}
                                 </div>
                                 <div class="review-date">
-                                    ${new Date(review.date).toLocaleString()}
+                                    ${formatUTCDate(review.date)}
                                 </div>
                             </div>
                         </a>
