@@ -929,11 +929,11 @@
 
                 console.log('Data by 6-hour bucket:', dataByBucket);
 
-                // Convert to sorted arrays
+                // Convert to sorted arrays, null for zero values (so lines aren't drawn)
                 const buckets = Object.keys(dataByBucket).sort();
-                const doneData = buckets.map(bucket => ({ x: bucket, y: dataByBucket[bucket].done }));
-                const errorData = buckets.map(bucket => ({ x: bucket, y: dataByBucket[bucket].error }));
-                const costData = buckets.map(bucket => ({ x: bucket, y: dataByBucket[bucket].cost }));
+                const doneData = buckets.map(bucket => ({ x: bucket, y: dataByBucket[bucket].done || null }));
+                const errorData = buckets.map(bucket => ({ x: bucket, y: dataByBucket[bucket].error || null }));
+                const costData = buckets.map(bucket => ({ x: bucket, y: dataByBucket[bucket].cost || null }));
 
                 console.log('Chart data - Done:', doneData, 'Error:', errorData, 'Cost:', costData);
 
@@ -957,6 +957,7 @@
                                 backgroundColor: 'rgba(255, 193, 7, 0.1)',
                                 tension: 0.1,
                                 fill: false,
+                                spanGaps: false,
                                 yAxisID: 'y1'
                             });
                         }
@@ -997,6 +998,7 @@
                             backgroundColor: 'rgba(40, 167, 69, 0.1)',
                             tension: 0.1,
                             fill: true,
+                            spanGaps: false,
                             yAxisID: 'y'
                         },
                         {
@@ -1006,6 +1008,7 @@
                             backgroundColor: 'rgba(220, 53, 69, 0.1)',
                             tension: 0.1,
                             fill: true,
+                            spanGaps: false,
                             yAxisID: 'y'
                         }
                     ];
@@ -1019,6 +1022,7 @@
                             backgroundColor: 'rgba(255, 193, 7, 0.1)',
                             tension: 0.1,
                             fill: false,
+                            spanGaps: false,
                             yAxisID: 'y1'
                         });
                     }
