@@ -60,6 +60,26 @@ class WorkTreeManager:
         """
         return self.work_trees.get(wt_id)
 
+    def get_git_dir(self, wt_id: int) -> Optional[str]:
+        """Get the path to the git metadata directory for a work tree
+
+        For worktrees, this is <main-repo>/.git/worktrees/<wt-name>/
+        This directory contains index, HEAD, index.lock, and other git metadata files.
+
+        Args:
+            wt_id: Work tree ID
+
+        Returns:
+            Path to git metadata directory or None if work tree doesn't exist
+        """
+        wt_path = self.get_work_tree_path(wt_id)
+        if not wt_path:
+            return None
+
+        # For worktrees, the git dir is at: <main-repo>/.git/worktrees/<wt-name>/
+        wt_name = os.path.basename(wt_path)
+        return os.path.join(self.git_tree, '.git', 'worktrees', wt_name)
+
     def create_temp_copy(self, wt_id: int, commit_hash: str) -> str:
         """Create a temporary copy of work tree for reviewing a specific commit
 

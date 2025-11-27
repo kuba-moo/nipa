@@ -34,6 +34,38 @@ class SetupWorker:
         self.wt_id = wt_id
         self.patchwork = patchwork
 
+    def _wait_for_index_lock(self, timeout: int = 60):
+        """Wait for git index.lock to be released
+
+        Args:
+            timeout: Maximum time to wait in seconds (default 60)
+
+        Returns:
+            True if lock was released or didn't exist, False if timeout
+        """
+        git_dir = self.worktree_mgr.get_git_dir(self.wt_id)
+        if not git_dir:
+            return True
+
+        lock_file = os.path.join(git_dir, 'index.lock')
+
+        if not os.path.exists(lock_file):
+            return True
+
+        log_thread(f"Waiting for index.lock to be released in work tree {self.wt_id}")
+        start_time = time.time()
+
+        while os.path.exists(lock_file):
+            elapsed = time.time() - start_time
+            if elapsed > timeout:
+                log_thread(f"Timeout waiting for index.lock in work tree {self.wt_id}")
+                return False
+
+            time.sleep(1)
+
+        log_thread(f"index.lock released in work tree {self.wt_id} after {time.time() - start_time:.1f}s")
+        return True
+
     def worker_loop(self, worker_id: int, review_queue):
         """Main worker loop for a setup worker
 
@@ -64,6 +96,7 @@ class SetupWorker:
                 if review_id:
                     self.storage.update_review_status(review_id, 'error', f'Setup failed: {str(e)}')
 
+            log_thread(f"Setup worker {worker_id} done with review {review_id}")
     def process_review(self, request: Dict):
         """Process a review request (setup phase only)
 
@@ -72,6 +105,12 @@ class SetupWorker:
         """
         review_id = request['review_id']
         token = request['token']
+
+        # Wait for any existing git lock to be released
+        if not self._wait_for_index_lock():
+            self.storage.update_review_status(review_id, 'error', 'Timeout waiting for git index.lock')
+            self.storage.write_message(token, review_id, 'Timeout waiting for git index.lock')
+            return
 
         # Update status to in-progress
         self.storage.update_review_status(review_id, 'in-progress')
