@@ -355,11 +355,17 @@
 
         .review-item {
             background: var(--bg-tertiary);
-            padding: 15px;
             margin-bottom: 10px;
             border-radius: 4px;
             border-left: 4px solid var(--accent-primary);
             transition: background-color 0.2s;
+        }
+
+        .review-item a {
+            text-decoration: none;
+            color: inherit;
+            display: block;
+            padding: 15px;
         }
 
         .review-item:hover {
@@ -1358,44 +1364,47 @@
                     ? `👤 ${review.token_owner}`
                     : '';
 
+                // Cost (only for superusers)
+                const cost = review.cost_usd
+                    ? `<span style="color: var(--text-muted); font-size: 11px;">$${review.cost_usd.toFixed(4)}</span>`
+                    : '';
+
                 // Private badge (only show for private reviews)
                 const visibilityBadge = review.is_public
                     ? ''
                     : '<span class="visibility-badge visibility-private">🔒 Private</span>';
 
                 html += `
-                    <li class="review-item status-${review.status}" onclick="openReview('${review.review_id}')" style="cursor: pointer;">
-                        <div class="review-header">
-                            <span class="review-id">${review.review_id}</span>
-                            <div style="display: flex; gap: 8px; align-items: center;">
-                                ${feedbackBadge}
-                                ${visibilityBadge}
-                                <span class="status-badge status-${review.status}">${review.status}</span>
+                    <li class="review-item status-${review.status}">
+                        <a href="ai-review.html?id=${review.review_id}">
+                            <div class="review-header">
+                                <span class="review-id">${review.review_id}</span>
+                                <div style="display: flex; gap: 8px; align-items: center;">
+                                    ${feedbackBadge}
+                                    ${visibilityBadge}
+                                    <span class="status-badge status-${review.status}">${review.status}</span>
+                                </div>
                             </div>
-                        </div>
-                        <div class="review-details">
-                            <div class="review-tree-info">
-                                <strong>${review.tree}</strong> <span style="color: var(--text-muted);">(${review.patch_count} patches)</span>
+                            <div class="review-details">
+                                <div class="review-tree-info">
+                                    <strong>${review.tree}</strong> <span style="color: var(--text-muted);">(${review.patch_count} patches)</span>
+                                </div>
+                                <div class="review-meta">
+                                    <span class="submission-type">${submissionType}</span>
+                                    ${tokenOwner ? `<span class="token-owner">${tokenOwner}</span>` : ''}
+                                    ${cost}
+                                </div>
+                                <div class="review-date">
+                                    ${new Date(review.date).toLocaleString()}
+                                </div>
                             </div>
-                            <div class="review-meta">
-                                <span class="submission-type">${submissionType}</span>
-                                ${tokenOwner ? `<span class="token-owner">${tokenOwner}</span>` : ''}
-                            </div>
-                            <div class="review-date">
-                                ${new Date(review.date).toLocaleString()}
-                            </div>
-                        </div>
+                        </a>
                     </li>
                 `;
             });
             html += '</ul>';
 
             container.innerHTML = html;
-        }
-
-        function openReview(reviewId) {
-            // Never include token in URL - ai-review.html will get it from localStorage
-            window.location.href = `ai-review.html?id=${reviewId}`;
         }
 
         function showMessage(elementId, message, type) {

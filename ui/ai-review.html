@@ -357,6 +357,10 @@
                     <label>Commit Hash:</label>
                     <span id="review-hash"></span>
                 </div>
+                <div class="review-info-item" id="cost-info" style="display: none;">
+                    <label>Cost:</label>
+                    <span id="review-cost"></span>
+                </div>
             </div>
             <div id="progress-info" style="margin-top: 15px; display: none;">
                 <label style="font-weight: bold; color: var(--text-secondary);">Progress:</label>
@@ -501,6 +505,12 @@
             if (data.hash) {
                 document.getElementById('hash-info').style.display = 'block';
                 document.getElementById('review-hash').textContent = data.hash;
+            }
+
+            // Cost (only shown for superusers)
+            if (data.cost_usd) {
+                document.getElementById('cost-info').style.display = 'block';
+                document.getElementById('review-cost').textContent = `$${data.cost_usd.toFixed(4)}`;
             }
 
             // Message (error or warning)

@@ -213,6 +213,10 @@ class AirService:
         if metadata.get('completed_patches'):
             result['completed_patches'] = metadata['completed_patches']
 
+        # Add cost (only for superusers)
+        if is_superuser and metadata.get('cost_usd'):
+            result['cost_usd'] = metadata['cost_usd']
+
         # Add queue position if queued
         if metadata['status'] == 'queued':
             queue_len = self.queue.get_patch_count_ahead(review_id)
@@ -245,6 +249,9 @@ class AirService:
         Returns:
             List of review summaries
         """
+        # Check if the requesting user is a superuser (for showing costs)
+        is_requesting_superuser = token and self.token_auth and self.token_auth.is_superuser(token)
+
         if public_only:
             # Return only public reviews (check token DB for public_read status)
             reviews = self.storage.list_reviews(token, limit, superuser=False)
@@ -275,6 +282,10 @@ class AirService:
             # Add hash if present
             if r.get('hash'):
                 review_info['hash'] = r['hash']
+
+            # Add cost (only for superusers)
+            if is_requesting_superuser and r.get('cost_usd'):
+                review_info['cost_usd'] = r['cost_usd']
 
             # Add token owner name if token_auth is available
             if self.token_auth:
