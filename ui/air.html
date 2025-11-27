@@ -290,6 +290,11 @@
             margin-bottom: 10px;
             border-radius: 4px;
             border-left: 4px solid var(--accent-primary);
+            transition: background-color 0.2s;
+        }
+
+        .review-item:hover {
+            background: var(--bg-card);
         }
 
         .review-item.status-done {
@@ -307,13 +312,46 @@
         .review-header {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 10px;
+            align-items: center;
+            margin-bottom: 8px;
         }
 
         .review-id {
             font-family: monospace;
             font-size: 12px;
             color: var(--text-muted);
+        }
+
+        .review-details {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            gap: 15px;
+            align-items: center;
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .review-tree-info {
+            font-weight: 600;
+        }
+
+        .review-meta {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+            font-size: 12px;
+        }
+
+        .review-date {
+            font-size: 12px;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+
+        .review-owner {
+            font-size: 12px;
+            white-space: nowrap;
         }
 
         .status-badge {
@@ -336,15 +374,15 @@
             padding: 2px 8px;
             border-radius: 10px;
             font-size: 11px;
-            background: var(--bg-tertiary);
+            background: var(--bg-secondary);
             color: var(--text-secondary);
             border: 1px solid var(--border-color);
+            white-space: nowrap;
         }
 
         .token-owner {
             font-size: 11px;
             color: var(--text-muted);
-            font-style: italic;
         }
 
         .visibility-badge {
@@ -382,11 +420,6 @@
         .status-error {
             background: #ffebee;
             color: #c62828;
-        }
-
-        .review-details {
-            font-size: 14px;
-            color: var(--text-secondary);
         }
 
         .message {
@@ -1140,16 +1173,16 @@
                 // Determine submission type
                 let submissionType = '';
                 if (review.patchwork_series_id) {
-                    submissionType = `<span class="submission-type">Patchwork: ${review.patchwork_series_id}</span>`;
+                    submissionType = `Patchwork: ${review.patchwork_series_id}`;
                 } else if (review.hash) {
-                    submissionType = `<span class="submission-type">Hash: ${review.hash.substring(0, 12)}</span>`;
+                    submissionType = `Hash: ${review.hash.substring(0, 12)}`;
                 } else {
-                    submissionType = `<span class="submission-type">Patch files</span>`;
+                    submissionType = `Patch files`;
                 }
 
                 // Token owner
                 const tokenOwner = review.token_owner
-                    ? `<span class="token-owner">👤 ${review.token_owner}</span>`
+                    ? `👤 ${review.token_owner}`
                     : '';
 
                 // Private badge (only show for private reviews)
@@ -1168,12 +1201,16 @@
                             </div>
                         </div>
                         <div class="review-details">
-                            <strong>${review.tree}</strong> - ${review.patch_count} patch(es)
-                            <br>
-                            <small>${submissionType}</small>
-                            <br>
-                            <small>${new Date(review.date).toLocaleString()}</small>
-                            ${tokenOwner ? '<br>' + tokenOwner : ''}
+                            <div class="review-tree-info">
+                                <strong>${review.tree}</strong> <span style="color: var(--text-muted);">(${review.patch_count} patches)</span>
+                            </div>
+                            <div class="review-meta">
+                                <span class="submission-type">${submissionType}</span>
+                                ${tokenOwner ? `<span class="token-owner">${tokenOwner}</span>` : ''}
+                            </div>
+                            <div class="review-date">
+                                ${new Date(review.date).toLocaleString()}
+                            </div>
                         </div>
                     </li>
                 `;
