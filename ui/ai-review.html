@@ -423,6 +423,7 @@
 
         let currentFormat = 'inline';  // Default to inline/Review format
         let inlineReviews = [];  // Store inline reviews for navigation coloring
+        let refreshInterval = null;  // Interval for auto-refreshing in-progress reviews
 
         if (!reviewId) {
             document.getElementById('loading').style.display = 'none';
@@ -512,6 +513,24 @@
             if (data.status === 'queued' && data['queue-len'] !== undefined) {
                 document.getElementById('progress-info').style.display = 'block';
                 document.getElementById('review-progress').textContent = `${data['queue-len']} patches ahead in queue`;
+            }
+
+            // Auto-refresh logic for in-progress reviews
+            if (data.status === 'in-progress') {
+                // Clear any existing interval
+                if (refreshInterval) {
+                    clearInterval(refreshInterval);
+                }
+                // Set up 15-second auto-refresh
+                refreshInterval = setInterval(() => {
+                    loadReview();
+                }, 15000);
+            } else {
+                // Clear interval if status is no longer in-progress
+                if (refreshInterval) {
+                    clearInterval(refreshInterval);
+                    refreshInterval = null;
+                }
             }
 
             // Load reviews if status is done
