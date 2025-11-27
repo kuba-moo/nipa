@@ -332,6 +332,21 @@
             color: #1976d2;
         }
 
+        .submission-type {
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+        }
+
+        .token-owner {
+            font-size: 11px;
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
         .status-queued {
             background: #e3f2fd;
             color: #1976d2;
@@ -1105,6 +1120,21 @@
                     ? '<span class="feedback-badge">📝 Has feedback</span>'
                     : '';
 
+                // Determine submission type
+                let submissionType = '';
+                if (review.patchwork_series_id) {
+                    submissionType = `<span class="submission-type">Patchwork: ${review.patchwork_series_id}</span>`;
+                } else if (review.hash) {
+                    submissionType = `<span class="submission-type">Hash: ${review.hash.substring(0, 12)}</span>`;
+                } else {
+                    submissionType = `<span class="submission-type">Patch files</span>`;
+                }
+
+                // Token owner
+                const tokenOwner = review.token_owner
+                    ? `<span class="token-owner">👤 ${review.token_owner}</span>`
+                    : '';
+
                 html += `
                     <li class="review-item status-${review.status}" onclick="openReview('${review.review_id}', '${token}')" style="cursor: pointer;">
                         <div class="review-header">
@@ -1117,7 +1147,10 @@
                         <div class="review-details">
                             <strong>${review.tree}</strong> - ${review.patch_count} patch(es)
                             <br>
+                            <small>${submissionType}</small>
+                            <br>
                             <small>${new Date(review.date).toLocaleString()}</small>
+                            ${tokenOwner ? '<br>' + tokenOwner : ''}
                         </div>
                     </li>
                 `;

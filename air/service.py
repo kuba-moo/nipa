@@ -257,14 +257,36 @@ class AirService:
         else:
             reviews = self.storage.list_reviews(token, limit, superuser=superuser)
 
-        # Return simplified view
-        return [{
-            'review_id': r['id'],
-            'status': r['status'],
-            'date': r['date'],
-            'tree': r['tree'],
-            'patch_count': r.get('patch_count', 0)
-        } for r in reviews]
+        # Return simplified view with additional fields
+        result = []
+        for r in reviews:
+            review_info = {
+                'review_id': r['id'],
+                'status': r['status'],
+                'date': r['date'],
+                'tree': r['tree'],
+                'patch_count': r.get('patch_count', 0)
+            }
+
+            # Add patchwork series ID if present
+            if r.get('patchwork_series_id'):
+                review_info['patchwork_series_id'] = r['patchwork_series_id']
+
+            # Add hash if present
+            if r.get('hash'):
+                review_info['hash'] = r['hash']
+
+            # Add token owner name if token_auth is available
+            if self.token_auth:
+                token_info = self.token_auth.get_token_info(r.get('token', ''))
+                if token_info:
+                    review_info['token_owner'] = token_info.get('name', 'Unknown')
+                else:
+                    review_info['token_owner'] = 'Unknown'
+
+            result.append(review_info)
+
+        return result
 
     def get_status(self) -> Dict:
         """Get service status
