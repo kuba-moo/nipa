@@ -322,7 +322,10 @@ class AirService:
             'error': sum(1 for r in all_reviews if r['status'] == 'error'),
         }
 
-        return {
+        # Calculate total cost across all reviews
+        total_cost = sum(r.get('cost_usd', 0.0) for r in all_reviews)
+
+        result = {
             'service': 'air',
             'status': 'running',
             'queue_size': self.queue.size(),
@@ -330,3 +333,9 @@ class AirService:
             'max_claude_runs': self.config.max_claude_runs,
             'review_counts': status_counts,
         }
+
+        # Include cost only if there is cost data (indicates superuser reviews exist)
+        if total_cost > 0:
+            result['total_cost_usd'] = round(total_cost, 2)
+
+        return result

@@ -887,6 +887,9 @@
 
                 console.log(`Fetched ${result.reviews.length} reviews for chart`);
 
+                // Check if any review has cost data (indicates superuser)
+                const hasCostData = result.reviews.some(r => r.cost_usd !== undefined);
+
                 // Group reviews by 6-hour time buckets and status
                 const dataByBucket = {};
 
@@ -905,7 +908,8 @@
                             queued: 0,
                             'in-progress': 0,
                             done: 0,
-                            error: 0
+                            error: 0,
+                            cost: 0.0
                         };
                     }
 
@@ -916,6 +920,11 @@
                     } else {
                         console.warn(`Unknown status: ${status} for review ${review.review_id}`);
                     }
+
+                    // Sum cost if available (only for completed reviews)
+                    if (review.cost_usd && review.status === 'done') {
+                        dataByBucket[bucketKey].cost += review.cost_usd;
+                    }
                 });
 
                 console.log('Data by 6-hour bucket:', dataByBucket);
@@ -924,8 +933,9 @@
                 const buckets = Object.keys(dataByBucket).sort();
                 const doneData = buckets.map(bucket => ({ x: bucket, y: dataByBucket[bucket].done }));
                 const errorData = buckets.map(bucket => ({ x: bucket, y: dataByBucket[bucket].error }));
+                const costData = buckets.map(bucket => ({ x: bucket, y: dataByBucket[bucket].cost }));
 
-                console.log('Chart data - Done:', doneData, 'Error:', errorData);
+                console.log('Chart data - Done:', doneData, 'Error:', errorData, 'Cost:', costData);
 
                 // Create or update chart
                 const ctx = document.getElementById('reviewChart');
@@ -934,30 +944,138 @@
                     // Update existing chart
                     reviewChart.data.datasets[0].data = doneData;
                     reviewChart.data.datasets[1].data = errorData;
+
+                    // Update or add cost dataset
+                    if (hasCostData) {
+                        if (reviewChart.data.datasets.length > 2) {
+                            reviewChart.data.datasets[2].data = costData;
+                        } else {
+                            reviewChart.data.datasets.push({
+                                label: 'Cost ($)',
+                                data: costData,
+                                borderColor: '#ffc107',
+                                backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                                tension: 0.1,
+                                fill: false,
+                                yAxisID: 'y1'
+                            });
+                        }
+                        // Ensure secondary axis exists
+                        if (!reviewChart.options.scales.y1) {
+                            reviewChart.options.scales.y1 = {
+                                type: 'linear',
+                                position: 'right',
+                                beginAtZero: true,
+                                grid: {
+                                    drawOnChartArea: false
+                                },
+                                ticks: {
+                                    color: getComputedStyle(document.documentElement).getPropertyValue('--text-primary'),
+                                    callback: function(value) {
+                                        return '$' + value.toFixed(2);
+                                    }
+                                }
+                            };
+                        }
+                    } else {
+                        // Remove cost dataset if present
+                        if (reviewChart.data.datasets.length > 2) {
+                            reviewChart.data.datasets.splice(2, 1);
+                        }
+                        // Remove secondary axis
+                        delete reviewChart.options.scales.y1;
+                    }
+
                     reviewChart.update();
                 } else {
                     // Create new chart
+                    const datasets = [
+                        {
+                            label: 'Completed',
+                            data: doneData,
+                            borderColor: '#28a745',
+                            backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                            tension: 0.1,
+                            fill: true,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Errors',
+                            data: errorData,
+                            borderColor: '#dc3545',
+                            backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                            tension: 0.1,
+                            fill: true,
+                            yAxisID: 'y'
+                        }
+                    ];
+
+                    // Add cost dataset if we have cost data
+                    if (hasCostData) {
+                        datasets.push({
+                            label: 'Cost ($)',
+                            data: costData,
+                            borderColor: '#ffc107',
+                            backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                            tension: 0.1,
+                            fill: false,
+                            yAxisID: 'y1'
+                        });
+                    }
+
+                    const scales = {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'hour',
+                                stepSize: 6,
+                                displayFormats: {
+                                    hour: 'MMM d HH:mm'
+                                }
+                            },
+                            grid: {
+                                color: getComputedStyle(document.documentElement).getPropertyValue('--border-color')
+                            },
+                            ticks: {
+                                color: getComputedStyle(document.documentElement).getPropertyValue('--text-primary')
+                            }
+                        },
+                        y: {
+                            type: 'linear',
+                            position: 'left',
+                            beginAtZero: true,
+                            grid: {
+                                color: getComputedStyle(document.documentElement).getPropertyValue('--border-color')
+                            },
+                            ticks: {
+                                color: getComputedStyle(document.documentElement).getPropertyValue('--text-primary'),
+                                precision: 0
+                            }
+                        }
+                    };
+
+                    // Add secondary y-axis for cost if we have cost data
+                    if (hasCostData) {
+                        scales.y1 = {
+                            type: 'linear',
+                            position: 'right',
+                            beginAtZero: true,
+                            grid: {
+                                drawOnChartArea: false
+                            },
+                            ticks: {
+                                color: getComputedStyle(document.documentElement).getPropertyValue('--text-primary'),
+                                callback: function(value) {
+                                    return '$' + value.toFixed(2);
+                                }
+                            }
+                        };
+                    }
+
                     reviewChart = new Chart(ctx, {
                         type: 'line',
                         data: {
-                            datasets: [
-                                {
-                                    label: 'Completed',
-                                    data: doneData,
-                                    borderColor: '#28a745',
-                                    backgroundColor: 'rgba(40, 167, 69, 0.1)',
-                                    tension: 0.1,
-                                    fill: true
-                                },
-                                {
-                                    label: 'Errors',
-                                    data: errorData,
-                                    borderColor: '#dc3545',
-                                    backgroundColor: 'rgba(220, 53, 69, 0.1)',
-                                    tension: 0.1,
-                                    fill: true
-                                }
-                            ]
+                            datasets: datasets
                         },
                         options: {
                             responsive: true,
@@ -975,37 +1093,24 @@
                                 },
                                 tooltip: {
                                     mode: 'index',
-                                    intersect: false
+                                    intersect: false,
+                                    callbacks: {
+                                        label: function(context) {
+                                            let label = context.dataset.label || '';
+                                            if (label) {
+                                                label += ': ';
+                                            }
+                                            if (context.dataset.yAxisID === 'y1') {
+                                                label += '$' + context.parsed.y.toFixed(4);
+                                            } else {
+                                                label += context.parsed.y;
+                                            }
+                                            return label;
+                                        }
+                                    }
                                 }
                             },
-                            scales: {
-                                x: {
-                                    type: 'time',
-                                    time: {
-                                        unit: 'hour',
-                                        stepSize: 6,
-                                        displayFormats: {
-                                            hour: 'MMM d HH:mm'
-                                        }
-                                    },
-                                    grid: {
-                                        color: getComputedStyle(document.documentElement).getPropertyValue('--border-color')
-                                    },
-                                    ticks: {
-                                        color: getComputedStyle(document.documentElement).getPropertyValue('--text-primary')
-                                    }
-                                },
-                                y: {
-                                    beginAtZero: true,
-                                    grid: {
-                                        color: getComputedStyle(document.documentElement).getPropertyValue('--border-color')
-                                    },
-                                    ticks: {
-                                        color: getComputedStyle(document.documentElement).getPropertyValue('--text-primary'),
-                                        precision: 0
-                                    }
-                                }
-                            }
+                            scales: scales
                         }
                     });
                 }
@@ -1041,7 +1146,19 @@
                 const data = await response.json();
 
                 const grid = document.getElementById('statusGrid');
-                grid.innerHTML = `
+
+                // Determine if we have cost data
+                const hasCost = data.total_cost_usd !== undefined;
+
+                // Adjust grid to fit all boxes on one line
+                if (hasCost) {
+                    grid.style.gridTemplateColumns = 'repeat(6, 1fr)';
+                } else {
+                    grid.style.gridTemplateColumns = 'repeat(5, 1fr)';
+                }
+
+                // Build status cards HTML
+                let statusHTML = `
                     <div class="status-card">
                         <div class="label">Queue Size</div>
                         <div class="value">${data.queue_size}</div>
@@ -1063,6 +1180,18 @@
                         <div class="value">${data.review_counts.error}</div>
                     </div>
                 `;
+
+                // Add cost card if cost data is present (indicates superuser)
+                if (hasCost) {
+                    statusHTML += `
+                    <div class="status-card">
+                        <div class="label">Total Cost</div>
+                        <div class="value">$${data.total_cost_usd.toFixed(2)}</div>
+                    </div>
+                    `;
+                }
+
+                grid.innerHTML = statusHTML;
             } catch (error) {
                 console.error('Error loading status:', error);
             }
