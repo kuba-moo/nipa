@@ -347,6 +347,23 @@
             font-style: italic;
         }
 
+        .visibility-badge {
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+        .visibility-private {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        [data-theme="dark"] .visibility-private {
+            background: #4a1f1f;
+            color: #f48fb1;
+        }
+
         .status-queued {
             background: #e3f2fd;
             color: #1976d2;
@@ -1135,12 +1152,18 @@
                     ? `<span class="token-owner">👤 ${review.token_owner}</span>`
                     : '';
 
+                // Private badge (only show for private reviews)
+                const visibilityBadge = review.is_public
+                    ? ''
+                    : '<span class="visibility-badge visibility-private">🔒 Private</span>';
+
                 html += `
-                    <li class="review-item status-${review.status}" onclick="openReview('${review.review_id}', '${token}')" style="cursor: pointer;">
+                    <li class="review-item status-${review.status}" onclick="openReview('${review.review_id}', '${token}', ${review.is_public})" style="cursor: pointer;">
                         <div class="review-header">
                             <span class="review-id">${review.review_id}</span>
                             <div style="display: flex; gap: 8px; align-items: center;">
                                 ${feedbackBadge}
+                                ${visibilityBadge}
                                 <span class="status-badge status-${review.status}">${review.status}</span>
                             </div>
                         </div>
@@ -1160,8 +1183,14 @@
             container.innerHTML = html;
         }
 
-        function openReview(reviewId, token) {
-            window.open(`ai-review.html?id=${reviewId}&token=${token}`, '_blank');
+        function openReview(reviewId, token, isPublic) {
+            let url = `ai-review.html?id=${reviewId}`;
+            // Only include token for private reviews
+            if (!isPublic && token) {
+                url += `&token=${token}`;
+            }
+            // Open in current tab
+            window.location.href = url;
         }
 
         function showMessage(elementId, message, type) {

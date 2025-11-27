@@ -281,8 +281,12 @@ class AirService:
                 token_info = self.token_auth.get_token_info(r.get('token', ''))
                 if token_info:
                     review_info['token_owner'] = token_info.get('name', 'Unknown')
+                    review_info['is_public'] = token_info.get('public_read', False)
                 else:
                     review_info['token_owner'] = 'Unknown'
+                    review_info['is_public'] = False
+            else:
+                review_info['is_public'] = False
 
             result.append(review_info)
 
