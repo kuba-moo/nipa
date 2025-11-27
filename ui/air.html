@@ -138,6 +138,33 @@
             background: var(--bg-tertiary);
         }
 
+        .token-minimized {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            display: none;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .token-minimized:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .token-minimized.active {
+            display: flex;
+        }
+
+        .header-buttons {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
         h1 {
             color: var(--heading-color);
             display: flex;
@@ -489,13 +516,18 @@
                 </h1>
                 <p class="subtitle">AI Review Service for Kernel Patches</p>
             </div>
-            <button class="theme-toggle" onclick="toggleTheme()">
-                <span id="themeIcon">🌙</span> Dark Mode
-            </button>
+            <div class="header-buttons">
+                <button class="token-minimized" id="tokenMinimized" onclick="showTokenConfig()">
+                    🔑 Token Configured
+                </button>
+                <button class="theme-toggle" onclick="toggleTheme()">
+                    <span id="themeIcon">🌙</span> Dark Mode
+                </button>
+            </div>
         </div>
 
         <!-- Global Configuration -->
-        <div class="global-config">
+        <div class="global-config" id="globalConfig">
             <h3>Configuration</h3>
             <div class="token-row">
                 <div class="token-input">
@@ -634,6 +666,27 @@
             } else {
                 localStorage.removeItem('apiToken');
             }
+            updateTokenVisibility();
+        }
+
+        function showTokenConfig() {
+            // Show the full config section and focus the input
+            document.getElementById('globalConfig').style.display = 'block';
+            document.getElementById('tokenMinimized').classList.remove('active');
+            document.getElementById('token').focus();
+        }
+
+        function updateTokenVisibility() {
+            const savedToken = localStorage.getItem('apiToken');
+            if (savedToken) {
+                // Token is saved - show minimized version, hide full config
+                document.getElementById('globalConfig').style.display = 'none';
+                document.getElementById('tokenMinimized').classList.add('active');
+            } else {
+                // No token saved - show full config, hide minimized
+                document.getElementById('globalConfig').style.display = 'block';
+                document.getElementById('tokenMinimized').classList.remove('active');
+            }
         }
 
         // Load saved token on page load
@@ -643,12 +696,21 @@
                 document.getElementById('token').value = savedToken;
                 document.getElementById('saveToken').checked = true;
             }
+            updateTokenVisibility();
         }
 
         // Auto-save token when it changes (if checkbox is checked)
         document.getElementById('token').addEventListener('input', function() {
             if (document.getElementById('saveToken').checked) {
                 localStorage.setItem('apiToken', this.value);
+            }
+        });
+
+        // Hide config section when input loses focus (if token is saved)
+        document.getElementById('token').addEventListener('blur', function() {
+            const savedToken = localStorage.getItem('apiToken');
+            if (savedToken) {
+                updateTokenVisibility();
             }
         });
 
