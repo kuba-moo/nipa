@@ -165,6 +165,48 @@
             align-items: center;
         }
 
+        .tabs {
+            display: flex;
+            gap: 5px;
+            border-bottom: 2px solid var(--border-color);
+            margin-top: 20px;
+            margin-bottom: 0;
+        }
+
+        .tab-button {
+            background: none;
+            border: none;
+            padding: 12px 24px;
+            cursor: pointer;
+            font-size: 15px;
+            color: var(--text-secondary);
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+
+        .tab-button:hover {
+            color: var(--text-primary);
+            background: var(--bg-tertiary);
+        }
+
+        .tab-button.active {
+            color: var(--accent-primary);
+            border-bottom-color: var(--accent-primary);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .section.tab-content {
+            margin-top: 20px;
+        }
+
         h1 {
             color: var(--heading-color);
             display: flex;
@@ -517,6 +559,10 @@
                 <p class="subtitle">AI Review Service for Kernel Patches</p>
             </div>
             <div class="header-buttons">
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 14px;">
+                    <input type="checkbox" id="superuserMode">
+                    All users
+                </label>
                 <button class="token-minimized" id="tokenMinimized" onclick="showTokenConfig()">
                     🔑 Token Configured
                 </button>
@@ -551,17 +597,58 @@
             </div>
         </div>
 
-        <!-- Review History Chart -->
-        <div class="section">
-            <h2>Review History</h2>
+        <!-- Tabs Navigation -->
+        <div class="tabs">
+            <button class="tab-button active" onclick="switchTab('history')">Review History</button>
+            <button class="tab-button" onclick="switchTab('recent')">Recent Reviews</button>
+            <button class="tab-button" onclick="switchTab('query')">Query Review</button>
+            <button class="tab-button" onclick="switchTab('submit')">Submit Review</button>
+        </div>
+
+        <!-- Review History Tab -->
+        <div class="section tab-content active" id="tab-history">
             <div class="chart-container">
                 <canvas id="reviewChart"></canvas>
             </div>
         </div>
 
-        <!-- Submit Review -->
-        <div class="section">
-            <h2>Submit Review</h2>
+        <!-- Recent Reviews Tab -->
+        <div class="section tab-content" id="tab-recent">
+            <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 14px;">
+                    <input type="checkbox" id="feedbackOnlyMode">
+                    With feedback only
+                </label>
+            </div>
+            <div id="reviewsList">
+                <div class="loading">Loading reviews...</div>
+            </div>
+        </div>
+
+        <!-- Query Review Tab -->
+        <div class="section tab-content" id="tab-query">
+            <div class="form-row">
+                <div class="form-field">
+                    <label for="queryReviewId">Review ID</label>
+                    <input type="text" id="queryReviewId" placeholder="UUID">
+                </div>
+                <div class="form-field">
+                    <label for="format">Format</label>
+                    <select id="format">
+                        <option value="">Status only</option>
+                        <option value="json">JSON</option>
+                        <option value="markup">Markdown</option>
+                        <option value="inline">Inline</option>
+                    </select>
+                </div>
+            </div>
+            <button onclick="queryReview()">Query Review</button>
+            <div id="queryMessage"></div>
+            <div id="queryResult" class="result-container"></div>
+        </div>
+
+        <!-- Submit Review Tab -->
+        <div class="section tab-content" id="tab-submit">
             <div class="form-row">
                 <div class="form-field">
                     <label for="inputType">Input Type *</label>
@@ -606,47 +693,6 @@
             <div id="submitMessage"></div>
         </div>
 
-        <!-- Query Review -->
-        <div class="section">
-            <h2>Query Review</h2>
-            <div class="form-row">
-                <div class="form-field">
-                    <label for="queryReviewId">Review ID</label>
-                    <input type="text" id="queryReviewId" placeholder="UUID">
-                </div>
-                <div class="form-field">
-                    <label for="format">Format</label>
-                    <select id="format">
-                        <option value="">Status only</option>
-                        <option value="json">JSON</option>
-                        <option value="markup">Markdown</option>
-                        <option value="inline">Inline</option>
-                    </select>
-                </div>
-            </div>
-            <button onclick="queryReview()">Query Review</button>
-            <div id="queryMessage"></div>
-            <div id="queryResult" class="result-container"></div>
-        </div>
-
-        <!-- Recent Reviews -->
-        <div class="section">
-            <h2>Recent Reviews</h2>
-            <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
-                <button onclick="listReviews()">Load Recent Reviews</button>
-                <label style="display: flex; align-items: center; gap: 6px; font-size: 14px;">
-                    <input type="checkbox" id="superuserMode">
-                    All users
-                </label>
-                <label style="display: flex; align-items: center; gap: 6px; font-size: 14px;">
-                    <input type="checkbox" id="feedbackOnlyMode">
-                    Only reviews with feedback
-                </label>
-            </div>
-            <div id="reviewsList">
-                <p class="small">Click "Load Recent Reviews" to see your reviews</p>
-            </div>
-        </div>
     </div>
 
     <script>
@@ -655,6 +701,67 @@
         // Token management
         function getToken() {
             return document.getElementById('token').value;
+        }
+
+        // Tab management
+        function switchTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+
+            // Remove active from all buttons
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+
+            // Show selected tab
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+
+            // Activate selected button
+            event.target.classList.add('active');
+
+            // Update URL hash
+            window.location.hash = tabName;
+
+            // Auto-load content for certain tabs
+            if (tabName === 'recent') {
+                listReviews();
+            }
+        }
+
+        // Load tab from URL hash on page load
+        function loadTabFromHash() {
+            const hash = window.location.hash.substring(1); // Remove #
+            const validTabs = ['history', 'recent', 'query', 'submit'];
+
+            if (hash && validTabs.includes(hash)) {
+                // Find and click the corresponding tab button
+                const tabButtons = document.querySelectorAll('.tab-button');
+                tabButtons.forEach((btn, index) => {
+                    if (btn.textContent.toLowerCase().includes(hash) ||
+                        (hash === 'history' && index === 0) ||
+                        (hash === 'recent' && index === 1) ||
+                        (hash === 'query' && index === 2) ||
+                        (hash === 'submit' && index === 3)) {
+                        // Activate this tab
+                        document.querySelectorAll('.tab-content').forEach(tab => {
+                            tab.classList.remove('active');
+                        });
+                        document.querySelectorAll('.tab-button').forEach(b => {
+                            b.classList.remove('active');
+                        });
+
+                        btn.classList.add('active');
+                        document.getElementById(`tab-${hash}`).classList.add('active');
+
+                        // Auto-load content for certain tabs
+                        if (hash === 'recent') {
+                            listReviews();
+                        }
+                    }
+                });
+            }
         }
 
         function handleSaveTokenChange() {
@@ -716,8 +823,12 @@
 
         // Load service status on page load
         loadSavedToken();
+        loadTabFromHash();
         loadStatus();
         setInterval(loadStatus, 10000); // Refresh every 10 seconds
+
+        // Listen for hash changes (browser back/forward)
+        window.addEventListener('hashchange', loadTabFromHash);
 
         // Initialize and update review chart
         let reviewChart = null;
