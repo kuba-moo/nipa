@@ -115,6 +115,11 @@ def create_app(config_path=None, skip_semcode=False, keep_temp_trees=False):
         if token and not token_auth.validate_token(token):
             return jsonify({'error': 'Invalid token'}), 401
 
+        # JSON format is only available to superusers
+        if fmt == 'json':
+            if not token or not token_auth.is_superuser(token):
+                return jsonify({'error': 'JSON format is only available to superusers'}), 403
+
         try:
             if pw_series_id:
                 # Query by Patchwork series ID
