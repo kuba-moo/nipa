@@ -274,6 +274,31 @@ class ReviewStorage:
             self.load_metadata()
             return self.reviews.get(review_id)
 
+    def find_review_by_patchwork_id(self, patchwork_series_id: int) -> Optional[str]:
+        """Find review ID by Patchwork series ID
+
+        Args:
+            patchwork_series_id: Patchwork series ID
+
+        Returns:
+            Review ID (most recent if multiple found) or None if not found
+        """
+        with self.lock:
+            self.load_metadata()
+            # Search for reviews with matching patchwork_series_id
+            # Return most recent if multiple found
+            matching_reviews = [
+                r for r in self.reviews.values()
+                if r.get('patchwork_series_id') == patchwork_series_id
+            ]
+
+            if not matching_reviews:
+                return None
+
+            # Sort by date (newest first) and return the most recent
+            matching_reviews.sort(key=lambda r: r['date'], reverse=True)
+            return matching_reviews[0]['id']
+
     def list_reviews(self, token: str, limit: int = 50, superuser: bool = False) -> List[Dict]:
         """List recent reviews
 

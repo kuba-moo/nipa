@@ -635,8 +635,8 @@
         <div class="section tab-content" id="tab-query">
             <div class="form-row">
                 <div class="form-field">
-                    <label for="queryReviewId">Review ID</label>
-                    <input type="text" id="queryReviewId" placeholder="UUID">
+                    <label for="queryReviewId">Review ID or Patchwork Series ID</label>
+                    <input type="text" id="queryReviewId" placeholder="UUID or integer">
                 </div>
                 <div class="form-field">
                     <label for="format">Format</label>
@@ -1278,18 +1278,36 @@
         }
 
         async function queryReview() {
-            const reviewId = document.getElementById('queryReviewId').value;
+            const input = document.getElementById('queryReviewId').value.trim();
             const token = getToken();
             const format = document.getElementById('format').value;
 
-            if (!reviewId || !token) {
-                showMessage('queryMessage', 'Please enter review ID and ensure API token is set at top', 'error');
+            if (!input) {
+                showMessage('queryMessage', 'Please enter a Review ID or Patchwork Series ID', 'error');
+                return;
+            }
+
+            if (!token) {
+                showMessage('queryMessage', 'Please ensure API token is set at top', 'error');
                 return;
             }
 
             try {
-                let url = `${API_BASE}/review?id=${reviewId}&token=${token}`;
-                if (format) url += `&format=${format}`;
+                let url = `${API_BASE}/review?token=${token}`;
+
+                // Auto-detect: if input is a plain integer, treat as Patchwork series ID
+                // Otherwise, treat as review ID (UUID)
+                if (/^\d+$/.test(input)) {
+                    // Plain integer - Patchwork series ID
+                    url += `&pw_series_id=${input}`;
+                } else {
+                    // UUID or other format - Review ID
+                    url += `&id=${encodeURIComponent(input)}`;
+                }
+
+                if (format) {
+                    url += `&format=${format}`;
+                }
 
                 const response = await fetch(url);
                 const result = await response.json();
