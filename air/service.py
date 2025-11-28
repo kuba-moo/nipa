@@ -176,6 +176,10 @@ class AirService:
         if not (is_public or is_owner or is_superuser):
             return None
 
+        # JSON format is only available to superusers
+        if fmt == 'json' and not is_superuser:
+            return None
+
         # Build response
         result = {
             'review_id': review_id,
