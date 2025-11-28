@@ -236,6 +236,25 @@ class AirService:
 
         return result
 
+    def get_review_by_patchwork_id(self, patchwork_series_id: int, token: Optional[str] = None, fmt: Optional[str] = None) -> Optional[Dict]:
+        """Get review by Patchwork series ID
+
+        Args:
+            patchwork_series_id: Patchwork series ID
+            token: Authentication token (optional for public_read reviews)
+            fmt: Optional format (json, markup, inline)
+
+        Returns:
+            Review result dictionary or None if not found/unauthorized
+        """
+        # Find review ID by Patchwork series ID (most recent)
+        review_id = self.storage.find_review_by_patchwork_id(patchwork_series_id)
+        if review_id is None:
+            return None
+
+        # Return full review data using existing method (handles authorization)
+        return self.get_review(review_id, token, fmt)
+
     def list_reviews(self, token: Optional[str] = None, limit: int = 50, superuser: bool = False,
                      public_only: bool = False) -> List[Dict]:
         """List recent reviews for a token

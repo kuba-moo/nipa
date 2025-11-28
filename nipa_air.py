@@ -99,11 +99,16 @@ def create_app(config_path=None, skip_semcode=False, keep_temp_trees=False):
     def get_review():
         """Get review status and results"""
         review_id = request.args.get('id')
+        pw_series_id = request.args.get('pw_series_id')
         token = request.args.get('token')
         fmt = request.args.get('format')
 
-        if not review_id:
-            return jsonify({'error': 'Missing review_id'}), 400
+        # Require either review_id or pw_series_id
+        if not review_id and not pw_series_id:
+            return jsonify({'error': 'Missing id or pw_series_id parameter'}), 400
+
+        if review_id and pw_series_id:
+            return jsonify({'error': 'Cannot specify both id and pw_series_id'}), 400
 
         # Token is optional for public_read reviews
         # Validate token if provided
@@ -111,7 +116,17 @@ def create_app(config_path=None, skip_semcode=False, keep_temp_trees=False):
             return jsonify({'error': 'Invalid token'}), 401
 
         try:
-            result = service.get_review(review_id, token, fmt)
+            if pw_series_id:
+                # Query by Patchwork series ID
+                try:
+                    pw_id_int = int(pw_series_id)
+                except ValueError:
+                    return jsonify({'error': 'Invalid pw_series_id - must be an integer'}), 400
+                result = service.get_review_by_patchwork_id(pw_id_int, token, fmt)
+            else:
+                # Query by review ID
+                result = service.get_review(review_id, token, fmt)
+
             if result is None:
                 return jsonify({'error': 'Review not found or access denied'}), 404
             return jsonify(result), 200
