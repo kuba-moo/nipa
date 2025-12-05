@@ -300,13 +300,13 @@ class ReviewStorage:
             matching_reviews.sort(key=lambda r: r['date'], reverse=True)
             return matching_reviews[0]['id']
 
-    def list_reviews(self, token: str, limit: int = 50, superuser: bool = False) -> List[Dict]:
+    def list_reviews(self, token: Optional[str], limit: int = 50, filter_user: bool = True) -> List[Dict]:
         """List recent reviews
 
         Args:
-            token: Authentication token
+            token: Authentication token (can be None)
             limit: Maximum number of reviews to return
-            superuser: If True, return all reviews regardless of token
+            filter_user: If True, return only reviews for this token. If False, return all reviews.
 
         Returns:
             List of review metadata dictionaries
@@ -316,10 +316,15 @@ class ReviewStorage:
             # (workers may have modified it)
             self.load_metadata()
 
-            if superuser:
-                reviews = list(self.reviews.values())
-            else:
+            if filter_user and token:
+                # Return only reviews for this specific token
                 reviews = [r for r in self.reviews.values() if r['token'] == token]
+            elif filter_user and not token:
+                # No token and filtering by user - return empty list
+                reviews = []
+            else:
+                # filter_user=False - return all reviews (service layer will filter)
+                reviews = list(self.reviews.values())
 
             # Sort by date (newest first)
             reviews.sort(key=lambda r: r['date'], reverse=True)

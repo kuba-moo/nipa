@@ -266,33 +266,53 @@ class AirService:
         # Return full review data using existing method (handles authorization)
         return self.get_review(review_id, token, fmt)
 
-    def list_reviews(self, token: Optional[str] = None, limit: int = 50, superuser: bool = False,
-                     public_only: bool = False) -> List[Dict]:
-        """List recent reviews for a token
+    def list_reviews(self, token: Optional[str] = None, limit: int = 50, filter_user: bool = True) -> List[Dict]:
+        """List recent reviews
 
         Args:
-            token: Authentication token (optional if public_only=True)
+            token: Authentication token (optional)
             limit: Maximum number of reviews to return
-            superuser: If True, return all reviews regardless of token
-            public_only: If True, return only public_read reviews (no auth needed)
+            filter_user: If True, return only reviews for this token.
+                        If False, return as many reviews as possible based on permissions:
+                          - Superuser token: all reviews
+                          - Regular token: user's reviews + public reviews
+                          - No token: public reviews only
 
         Returns:
             List of review summaries
         """
-        # Check if the requesting user is a superuser (for showing costs)
+        # Check if the requesting user is a superuser (for showing costs and permissions)
         is_requesting_superuser = token and self.token_auth and self.token_auth.is_superuser(token)
 
-        if public_only:
-            # Return only public reviews (check token DB for public_read status)
-            reviews = self.storage.list_reviews(token, limit, superuser=False)
-            # Filter to only reviews whose tokens have public_read enabled
-            if self.token_auth:
-                reviews = [r for r in reviews
-                          if self.token_auth.is_public_read(r.get('token', ''))]
-            else:
-                reviews = []
+        if filter_user:
+            # Return only reviews for this token
+            reviews = self.storage.list_reviews(token, limit, filter_user=True)
         else:
-            reviews = self.storage.list_reviews(token, limit, superuser=superuser)
+            # Return as many reviews as possible based on permissions
+            # Get all reviews from storage
+            reviews = self.storage.list_reviews(None, limit, filter_user=False)
+
+            # Filter based on permissions
+            if is_requesting_superuser:
+                # Superuser sees all reviews
+                pass
+            elif token:
+                # Regular user sees their own reviews + public reviews
+                user_token = token
+                if self.token_auth:
+                    reviews = [r for r in reviews
+                              if r.get('token') == user_token or
+                                 self.token_auth.is_public_read(r.get('token', ''))]
+                else:
+                    # No token_auth - can only see own reviews
+                    reviews = [r for r in reviews if r.get('token') == user_token]
+            else:
+                # No token - only public reviews
+                if self.token_auth:
+                    reviews = [r for r in reviews
+                              if self.token_auth.is_public_read(r.get('token', ''))]
+                else:
+                    reviews = []
 
         # Return simplified view with additional fields
         result = []

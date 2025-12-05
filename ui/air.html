@@ -838,6 +838,12 @@
 
         // Load service status on page load
         loadSavedToken();
+
+        // Default to "All users" mode if no token configured
+        if (!getToken()) {
+            document.getElementById('superuserMode').checked = true;
+        }
+
         loadTabFromHash();
         loadStatus();
         setInterval(loadStatus, 10000); // Refresh every 10 seconds
@@ -867,27 +873,11 @@
             const token = getToken();
             const superuser = document.getElementById('superuserMode').checked;
 
-            // Allow loading public reviews if no token and "All users" is checked
-            const publicMode = !token && superuser;
-
-            if (!token && !publicMode) {
-                return; // Skip chart if no token and not in public mode
-            }
-
             try {
                 // Fetch review data - get more reviews to build time series
-                // Use same superuser setting as the review list
-                let url = `${API_BASE}/reviews?limit=200`;
-
-                if (publicMode) {
-                    // No token, loading public reviews
-                    url += '&public_only=true';
-                } else {
-                    // Has token
+                let url = `${API_BASE}/reviews?limit=200&filter_user=${superuser ? 'false' : 'true'}`;
+                if (token) {
                     url += `&token=${token}`;
-                    if (superuser) {
-                        url += '&superuser=true';
-                    }
                 }
 
                 const response = await fetch(url);
@@ -1140,26 +1130,11 @@
             const token = getToken();
             const superuser = document.getElementById('superuserMode').checked;
 
-            // Allow loading public reviews if no token and "All users" is checked
-            const publicMode = !token && superuser;
-
-            if (!token && !publicMode) {
-                return; // Skip chart if no token and not in public mode
-            }
-
             try {
                 // Fetch review data - get more reviews to build time series
-                let url = `${API_BASE}/reviews?limit=200`;
-
-                if (publicMode) {
-                    // No token, loading public reviews
-                    url += '&public_only=true';
-                } else {
-                    // Has token
+                let url = `${API_BASE}/reviews?limit=200&filter_user=${superuser ? 'false' : 'true'}`;
+                if (token) {
                     url += `&token=${token}`;
-                    if (superuser) {
-                        url += '&superuser=true';
-                    }
                 }
 
                 const response = await fetch(url);
@@ -1722,30 +1697,13 @@
             const superuser = document.getElementById('superuserMode').checked;
             const feedbackOnly = document.getElementById('feedbackOnlyMode').checked;
 
-            // Allow loading public reviews if no token and "All users" is checked
-            const publicMode = !token && superuser;
-
-            if (!token && !publicMode) {
-                document.getElementById('reviewsList').innerHTML =
-                    '<p class="small">Please enter your API token at the top, or check "All users" to see public reviews</p>';
-                return;
-            }
-
             try {
                 // Show loading
                 document.getElementById('reviewsList').innerHTML = '<p class="small">Loading reviews...</p>';
 
-                let url = `${API_BASE}/reviews?limit=50`;
-
-                if (publicMode) {
-                    // No token, loading public reviews
-                    url += '&public_only=true';
-                } else {
-                    // Has token
+                let url = `${API_BASE}/reviews?limit=50&filter_user=${superuser ? 'false' : 'true'}`;
+                if (token) {
                     url += `&token=${token}`;
-                    if (superuser) {
-                        url += '&superuser=true';
-                    }
                 }
 
                 const response = await fetch(url);
@@ -1778,7 +1736,7 @@
                         ? reviewsWithFeedback.filter(r => r.hasFeedback)
                         : reviewsWithFeedback;
 
-                    displayReviewsList(filteredReviews, publicMode ? '' : token);
+                    displayReviewsList(filteredReviews, token);
                 } else {
                     document.getElementById('reviewsList').innerHTML =
                         `<div class="message error">Error: ${result.error}</div>`;
