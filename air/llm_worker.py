@@ -71,20 +71,21 @@ class LLMWorker:
         """Process a temp copy (run Claude review)
 
         Args:
-            temp_copy_info: Dict with temp_path, token, review_id, patch_num, commit_hash
+            temp_copy_info: Dict with temp_path, token, review_id, patch_num, commit_hash, git_range
         """
         temp_path = temp_copy_info['temp_path']
         token = temp_copy_info['token']
         review_id = temp_copy_info['review_id']
         patch_num = temp_copy_info['patch_num']
         commit_hash = temp_copy_info['commit_hash']
+        git_range = temp_copy_info.get('git_range', f"{commit_hash}^..{commit_hash}")  # Fallback for old data
 
         # Run Claude review with retries
         success = False
         for attempt in range(self.config.claude_retries):
             log_thread(f"Review attempt {attempt + 1} for commit {commit_hash[:8]}")
 
-            success = self._run_claude_review(temp_path, token, review_id, patch_num, attempt + 1)
+            success = self._run_claude_review(temp_path, token, review_id, patch_num, commit_hash, git_range, attempt + 1)
             if success:
                 log_thread(f"Successfully reviewed patch {patch_num} for {review_id}")
                 break
@@ -126,7 +127,7 @@ class LLMWorker:
             pass  # Ignore errors in format conversion
 
     def _run_claude_review(self, work_path: str, token: str, review_id: str,
-                          patch_num: int, attempt: int = 1) -> bool:
+                          patch_num: int, commit_hash: str, git_range: str, attempt: int = 1) -> bool:
         """Run Claude review on a commit
 
         Args:
@@ -134,6 +135,8 @@ class LLMWorker:
             token: Auth token
             review_id: Review ID
             patch_num: Patch number (1-based)
+            commit_hash: Commit hash being reviewed
+            git_range: Git range for the entire review (e.g., "base..head")
             attempt: Attempt number (1-based, default 1)
 
         Returns:
@@ -172,6 +175,13 @@ class LLMWorker:
         if not os.path.exists(full_prompt_path):
             log_thread_debug("WARNING", f"  Prompt NOT found: {full_prompt_path}")
 
+        prompt_msg = f"""
+        Current directory is the root of a Linux Kernel git repository.
+        Read the prompt from {full_prompt_path}.
+        Using the prompt, review the HEAD commit.
+        Use commit range {git_range} for the false-positive-guide.md section.
+        """
+
         # Build Claude command
         cmd = [
             'claude',
@@ -179,12 +189,23 @@ class LLMWorker:
             '--strict-mcp-config',
             '--allowedTools', self.config.mcp_tools,
             '--model', model,
-            '-p', f'review the top commit in this directory using prompt {full_prompt_path}',
+            '-p', prompt_msg,
             '--verbose',
             '--output-format=stream-json'
         ]
 
-        log_thread(f"Claude cwd: {work_path} prompt {full_prompt_path} model {model}")
+        info_path = os.path.join(patch_dir, f'cmd-info{attempt}.txt')
+        with open(info_path, 'w') as f:
+            f.write(f"Claude cwd: {work_path}\n")
+            f.write(f"Prompt: {full_prompt_path}\n")
+            f.write(f"Model: {model}\n")
+            f.write(f"Git range: {git_range}\n")
+            f.write("\nCommand:\n")
+            # Use shlex to properly quote arguments for shell safety
+            import shlex
+            f.write(" ".join(shlex.quote(arg) for arg in cmd))
+            f.write("\n")
+        log_thread(f"Launch Claude (see {info_path})")
 
         review_json_path = os.path.join(patch_dir, 'review.json')
         review_md_path = os.path.join(patch_dir, 'review.md')
