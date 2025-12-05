@@ -365,6 +365,10 @@
                     <label>Cost:</label>
                     <span id="review-cost"></span>
                 </div>
+                <div class="review-info-item" id="duration-info" style="display: none;">
+                    <label>Duration:</label>
+                    <span id="review-duration"></span>
+                </div>
             </div>
             <div id="progress-info" style="margin-top: 15px; display: none;">
                 <label style="font-weight: bold; color: var(--text-secondary);">Progress:</label>
@@ -523,6 +527,15 @@
                 document.getElementById('review-cost').textContent = `$${data.cost_usd.toFixed(2)}`;
             }
 
+            // Duration (for completed/error reviews)
+            if (data.start && data.end) {
+                const startDate = new Date(data.start + 'Z');
+                const endDate = new Date(data.end + 'Z');
+                const durationSeconds = (endDate - startDate) / 1000;
+                document.getElementById('duration-info').style.display = 'block';
+                document.getElementById('review-duration').textContent = formatDuration(durationSeconds);
+            }
+
             // Message (error or warning)
             if (data.message) {
                 document.getElementById('message-container').style.display = 'block';
@@ -673,6 +686,20 @@
             // Add 'Z' to explicitly mark as UTC for proper parsing
             const date = new Date(dateString + 'Z');
             return date.toLocaleString();
+        }
+
+        function formatDuration(seconds) {
+            if (seconds < 60) {
+                return `${Math.round(seconds)}s`;
+            } else if (seconds < 3600) {
+                const mins = Math.floor(seconds / 60);
+                const secs = Math.round(seconds % 60);
+                return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+            } else {
+                const hours = Math.floor(seconds / 3600);
+                const mins = Math.floor((seconds % 3600) / 60);
+                return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+            }
         }
     </script>
 </body>
