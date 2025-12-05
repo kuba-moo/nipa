@@ -1875,7 +1875,7 @@
                 let submissionType = '';
                 if (review.patchwork_series_id) {
                     const pwUrl = `https://patchwork.kernel.org/project/netdevbpf/list/?series=${review.patchwork_series_id}`;
-                    submissionType = `Patchwork: <a href="${pwUrl}" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: underline;">${review.patchwork_series_id}</a>`;
+                    submissionType = `Patchwork: <span onclick="event.stopPropagation(); event.preventDefault(); window.open('${pwUrl}', '_blank');" style="cursor: pointer; text-decoration: underline;">${review.patchwork_series_id}</span>`;
                 } else if (review.hash) {
                     submissionType = `Hash: ${review.hash.substring(0, 12)}`;
                 } else {
