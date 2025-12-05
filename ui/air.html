@@ -617,7 +617,7 @@
             <div class="chart-container">
                 <canvas id="reviewChart"></canvas>
             </div>
-            <h3 style="margin-top: 40px;">Daily Averages</h3>
+            <h3 style="margin-top: 40px;">Daily Averages (by feedback status)</h3>
             <div class="chart-container">
                 <canvas id="averagesChart"></canvas>
             </div>
@@ -1175,10 +1175,33 @@
                 // Check if any review has cost data (indicates superuser)
                 const hasCostData = result.reviews.some(r => r.cost_usd !== undefined);
 
-                // Group reviews by day and calculate averages
+                // Fetch full details for done reviews to check for feedback
+                const reviewsWithFeedback = await Promise.all(result.reviews.map(async (review) => {
+                    if (review.status === 'done') {
+                        try {
+                            let detailUrl = `${API_BASE}/review?id=${review.review_id}&format=inline`;
+                            if (token) {
+                                detailUrl += `&token=${token}`;
+                            }
+                            const detailResponse = await fetch(detailUrl);
+                            const detailData = await detailResponse.json();
+
+                            // Check if any patch has feedback
+                            if (detailData.review && Array.isArray(detailData.review)) {
+                                const hasFeedback = detailData.review.some(r => r !== null && r.trim() !== '');
+                                return { ...review, hasFeedback };
+                            }
+                        } catch (err) {
+                            console.error(`Error fetching details for review ${review.review_id}:`, err);
+                        }
+                    }
+                    return { ...review, hasFeedback: false };
+                }));
+
+                // Group reviews by day and calculate averages, separated by feedback status
                 const dataByDay = {};
 
-                result.reviews.forEach(review => {
+                reviewsWithFeedback.forEach(review => {
                     // Only process completed reviews with timing data
                     if (review.status !== 'done' || !review.duration_seconds || !review.patch_count || review.patch_count === 0) {
                         return;
@@ -1191,63 +1214,132 @@
 
                     if (!dataByDay[dayKey]) {
                         dataByDay[dayKey] = {
-                            totalTime: 0,  // Total wall-clock time (not per-patch, reviews run in parallel)
-                            totalCostPerPatch: 0,
-                            count: 0,
-                            costCount: 0  // Separate count for reviews with cost data
+                            // With feedback
+                            totalTimeWithFeedback: 0,
+                            totalCostPerPatchWithFeedback: 0,
+                            countWithFeedback: 0,
+                            costCountWithFeedback: 0,
+                            // Without feedback
+                            totalTimeNoFeedback: 0,
+                            totalCostPerPatchNoFeedback: 0,
+                            countNoFeedback: 0,
+                            costCountNoFeedback: 0
                         };
                     }
 
-                    // Total review duration (wall-clock time, accounts for parallel processing)
-                    dataByDay[dayKey].totalTime += review.duration_seconds;
-                    dataByDay[dayKey].count++;
+                    const hasFeedback = review.hasFeedback || false;
 
-                    if (review.cost_usd) {
-                        const costPerPatch = review.cost_usd / review.patch_count;
-                        dataByDay[dayKey].totalCostPerPatch += costPerPatch;
-                        dataByDay[dayKey].costCount++;
+                    if (hasFeedback) {
+                        // Reviews with feedback
+                        dataByDay[dayKey].totalTimeWithFeedback += review.duration_seconds;
+                        dataByDay[dayKey].countWithFeedback++;
+
+                        if (review.cost_usd) {
+                            const costPerPatch = review.cost_usd / review.patch_count;
+                            dataByDay[dayKey].totalCostPerPatchWithFeedback += costPerPatch;
+                            dataByDay[dayKey].costCountWithFeedback++;
+                        }
+                    } else {
+                        // Reviews without feedback
+                        dataByDay[dayKey].totalTimeNoFeedback += review.duration_seconds;
+                        dataByDay[dayKey].countNoFeedback++;
+
+                        if (review.cost_usd) {
+                            const costPerPatch = review.cost_usd / review.patch_count;
+                            dataByDay[dayKey].totalCostPerPatchNoFeedback += costPerPatch;
+                            dataByDay[dayKey].costCountNoFeedback++;
+                        }
                     }
                 });
 
-                console.log('Data by day:', dataByDay);
+                console.log('Data by day (with/without feedback):', dataByDay);
 
                 // Convert to sorted arrays with averages
                 const days = Object.keys(dataByDay).sort();
-                const avgTimeData = days.map(day => {
-                    const avg = dataByDay[day].totalTime / dataByDay[day].count;
-                    return { x: day, y: avg || null };
-                });
-                const avgCostData = days.map(day => {
-                    if (dataByDay[day].costCount === 0) return { x: day, y: null };
-                    const avg = dataByDay[day].totalCostPerPatch / dataByDay[day].costCount;
+
+                const avgTimeWithFeedback = days.map(day => {
+                    if (dataByDay[day].countWithFeedback === 0) return { x: day, y: null };
+                    const avg = dataByDay[day].totalTimeWithFeedback / dataByDay[day].countWithFeedback;
                     return { x: day, y: avg || null };
                 });
 
-                console.log('Chart data - Avg Time:', avgTimeData, 'Avg Cost:', avgCostData);
+                const avgTimeNoFeedback = days.map(day => {
+                    if (dataByDay[day].countNoFeedback === 0) return { x: day, y: null };
+                    const avg = dataByDay[day].totalTimeNoFeedback / dataByDay[day].countNoFeedback;
+                    return { x: day, y: avg || null };
+                });
+
+                const avgCostWithFeedback = days.map(day => {
+                    if (dataByDay[day].costCountWithFeedback === 0) return { x: day, y: null };
+                    const avg = dataByDay[day].totalCostPerPatchWithFeedback / dataByDay[day].costCountWithFeedback;
+                    return { x: day, y: avg || null };
+                });
+
+                const avgCostNoFeedback = days.map(day => {
+                    if (dataByDay[day].costCountNoFeedback === 0) return { x: day, y: null };
+                    const avg = dataByDay[day].totalCostPerPatchNoFeedback / dataByDay[day].costCountNoFeedback;
+                    return { x: day, y: avg || null };
+                });
+
+                console.log('Chart data - Time (feedback):', avgTimeWithFeedback, 'Time (no feedback):', avgTimeNoFeedback);
+                console.log('Chart data - Cost (feedback):', avgCostWithFeedback, 'Cost (no feedback):', avgCostNoFeedback);
 
                 // Create or update chart
                 const ctx = document.getElementById('averagesChart');
 
                 if (averagesChart) {
-                    // Update existing chart
-                    averagesChart.data.datasets[0].data = avgTimeData;
+                    // Update existing chart - rebuild datasets
+                    averagesChart.data.datasets = [];
 
-                    // Update or add cost dataset
+                    // Time datasets
+                    averagesChart.data.datasets.push({
+                        label: 'Avg Time - With Feedback (seconds)',
+                        data: avgTimeWithFeedback,
+                        borderColor: '#007bff',
+                        backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                        tension: 0.1,
+                        fill: false,
+                        spanGaps: false,
+                        yAxisID: 'y'
+                    });
+
+                    averagesChart.data.datasets.push({
+                        label: 'Avg Time - No Feedback (seconds)',
+                        data: avgTimeNoFeedback,
+                        borderColor: '#007bff',
+                        backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                        tension: 0.1,
+                        fill: false,
+                        spanGaps: false,
+                        yAxisID: 'y',
+                        borderDash: [5, 5]
+                    });
+
+                    // Cost datasets if we have cost data
                     if (hasCostData) {
-                        if (averagesChart.data.datasets.length > 1) {
-                            averagesChart.data.datasets[1].data = avgCostData;
-                        } else {
-                            averagesChart.data.datasets.push({
-                                label: 'Avg Cost per Patch ($)',
-                                data: avgCostData,
-                                borderColor: '#ffc107',
-                                backgroundColor: 'rgba(255, 193, 7, 0.1)',
-                                tension: 0.1,
-                                fill: false,
-                                spanGaps: false,
-                                yAxisID: 'y1'
-                            });
-                        }
+                        averagesChart.data.datasets.push({
+                            label: 'Avg Cost - With Feedback ($/patch)',
+                            data: avgCostWithFeedback,
+                            borderColor: '#ffc107',
+                            backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                            tension: 0.1,
+                            fill: false,
+                            spanGaps: false,
+                            yAxisID: 'y1'
+                        });
+
+                        averagesChart.data.datasets.push({
+                            label: 'Avg Cost - No Feedback ($/patch)',
+                            data: avgCostNoFeedback,
+                            borderColor: '#ffc107',
+                            backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                            tension: 0.1,
+                            fill: false,
+                            spanGaps: false,
+                            yAxisID: 'y1',
+                            borderDash: [5, 5]
+                        });
+
                         // Ensure secondary axis exists
                         if (!averagesChart.options.scales.y1) {
                             averagesChart.options.scales.y1 = {
@@ -1266,10 +1358,6 @@
                             };
                         }
                     } else {
-                        // Remove cost dataset if present
-                        if (averagesChart.data.datasets.length > 1) {
-                            averagesChart.data.datasets.splice(1, 1);
-                        }
                         // Remove secondary axis
                         delete averagesChart.options.scales.y1;
                     }
@@ -1279,28 +1367,51 @@
                     // Create new chart
                     const datasets = [
                         {
-                            label: 'Avg Review Time (seconds)',
-                            data: avgTimeData,
+                            label: 'Avg Time - With Feedback (seconds)',
+                            data: avgTimeWithFeedback,
                             borderColor: '#007bff',
                             backgroundColor: 'rgba(0, 123, 255, 0.1)',
                             tension: 0.1,
-                            fill: true,
+                            fill: false,
                             spanGaps: false,
                             yAxisID: 'y'
+                        },
+                        {
+                            label: 'Avg Time - No Feedback (seconds)',
+                            data: avgTimeNoFeedback,
+                            borderColor: '#007bff',
+                            backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                            tension: 0.1,
+                            fill: false,
+                            spanGaps: false,
+                            yAxisID: 'y',
+                            borderDash: [5, 5]
                         }
                     ];
 
-                    // Add cost dataset if we have cost data
+                    // Add cost datasets if we have cost data
                     if (hasCostData) {
                         datasets.push({
-                            label: 'Avg Cost per Patch ($)',
-                            data: avgCostData,
+                            label: 'Avg Cost - With Feedback ($/patch)',
+                            data: avgCostWithFeedback,
                             borderColor: '#ffc107',
                             backgroundColor: 'rgba(255, 193, 7, 0.1)',
                             tension: 0.1,
                             fill: false,
                             spanGaps: false,
                             yAxisID: 'y1'
+                        });
+
+                        datasets.push({
+                            label: 'Avg Cost - No Feedback ($/patch)',
+                            data: avgCostNoFeedback,
+                            borderColor: '#ffc107',
+                            backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                            tension: 0.1,
+                            fill: false,
+                            spanGaps: false,
+                            yAxisID: 'y1',
+                            borderDash: [5, 5]
                         });
                     }
 
