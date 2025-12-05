@@ -75,6 +75,7 @@ class ReviewStorage:
                 'hash': request_data.get('hash'),
                 'tree': request_data.get('tree'),
                 'branch': request_data.get('branch'),
+                'model': request_data.get('model'),  # Requested model (optional)
                 'message': None,
                 'patch_count': 0,  # Will be updated when patches are processed
             }

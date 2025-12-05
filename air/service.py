@@ -105,6 +105,10 @@ class AirService:
             print("[submit_review] Validation failed: tree missing")
             raise ValueError("tree is required")
 
+        # Normalize model: if not specified, use config default
+        if 'model' not in data or not data['model']:
+            data['model'] = self.config.claude_model
+
         print(f"[submit_review] Creating review entry for tree: {data['tree']}")
         # Create review entry
         review_id = self.storage.create_review(token, data)
@@ -205,6 +209,9 @@ class AirService:
 
         if metadata.get('end'):
             result['end'] = metadata['end']
+
+        if metadata.get('model'):
+            result['model'] = metadata['model']
 
         # Add message if exists
         message = self.storage.read_message(metadata['token'], review_id)
