@@ -313,6 +313,10 @@ class AirService:
             if r.get('hash'):
                 review_info['hash'] = r['hash']
 
+            # Add model if present
+            if r.get('model'):
+                review_info['model'] = r['model']
+
             # Add cost (only for superusers)
             if is_requesting_superuser and r.get('cost_usd'):
                 review_info['cost_usd'] = r['cost_usd']
