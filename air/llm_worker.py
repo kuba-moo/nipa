@@ -144,6 +144,10 @@ class LLMWorker:
         # Create patch directory if it doesn't exist
         os.makedirs(patch_dir, exist_ok=True)
 
+        # Get model from metadata (already normalized to config default in submit_review)
+        metadata = self.storage.get_review_metadata(review_id)
+        model = metadata.get('model', self.config.claude_model)
+
         # Copy the entire review prompt directory to the work tree
         # Strip trailing slash to ensure basename works correctly
         prompt_dir = self.config.review_prompt_dir.rstrip('/')
@@ -174,13 +178,13 @@ class LLMWorker:
             '--mcp-config', self.config.mcp_config,
             '--strict-mcp-config',
             '--allowedTools', self.config.mcp_tools,
-            '--model', self.config.claude_model,
+            '--model', model,
             '-p', f'review the top commit in this directory using prompt {full_prompt_path}',
             '--verbose',
             '--output-format=stream-json'
         ]
 
-        log_thread(f"Claude cwd: {work_path} prompt {full_prompt_path}")
+        log_thread(f"Claude cwd: {work_path} prompt {full_prompt_path} model {model}")
 
         review_json_path = os.path.join(patch_dir, 'review.json')
         review_md_path = os.path.join(patch_dir, 'review.md')
