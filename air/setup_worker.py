@@ -166,6 +166,7 @@ class SetupWorker:
                 'review_id': review_id,
                 'patch_num': i,
                 'commit_hash': commit_hash,
+                'git_range': git_range,  # Full range for the entire review
             }
 
             # Block if queue is full (this prevents setup workers from getting too far ahead)
