@@ -520,7 +520,7 @@
             // Cost (only shown for superusers)
             if (data.cost_usd) {
                 document.getElementById('cost-info').style.display = 'block';
-                document.getElementById('review-cost').textContent = `$${data.cost_usd.toFixed(4)}`;
+                document.getElementById('review-cost').textContent = `$${data.cost_usd.toFixed(2)}`;
             }
 
             // Message (error or warning)

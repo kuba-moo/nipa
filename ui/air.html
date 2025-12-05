@@ -1114,7 +1114,7 @@
                                                 label += ': ';
                                             }
                                             if (context.dataset.yAxisID === 'y1') {
-                                                label += '$' + context.parsed.y.toFixed(4);
+                                                label += '$' + context.parsed.y.toFixed(2);
                                             } else {
                                                 label += context.parsed.y;
                                             }
@@ -1549,7 +1549,7 @@
 
                 // Cost (only for superusers)
                 const cost = review.cost_usd
-                    ? `<span style="color: var(--text-muted); font-size: 11px;">$${review.cost_usd.toFixed(4)}</span>`
+                    ? `<span style="color: var(--text-muted); font-size: 11px;">$${review.cost_usd.toFixed(2)}</span>`
                     : '';
 
                 // Model
