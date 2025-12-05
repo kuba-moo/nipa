@@ -1721,7 +1721,8 @@
 
             // Show patch source information
             if (data.patchwork_series_id) {
-                html += `<p><strong>Patchwork Series:</strong> ${data.patchwork_series_id}</p>`;
+                const pwUrl = `https://patchwork.kernel.org/project/netdevbpf/list/?series=${data.patchwork_series_id}`;
+                html += `<p><strong>Patchwork Series:</strong> <a href="${pwUrl}" target="_blank" rel="noopener noreferrer">${data.patchwork_series_id}</a></p>`;
             } else if (data.hash) {
                 html += `<p><strong>Hash/Range:</strong> <code>${data.hash}</code></p>`;
             } else {
@@ -1804,7 +1805,8 @@
                 // Determine submission type
                 let submissionType = '';
                 if (review.patchwork_series_id) {
-                    submissionType = `Patchwork: ${review.patchwork_series_id}`;
+                    const pwUrl = `https://patchwork.kernel.org/project/netdevbpf/list/?series=${review.patchwork_series_id}`;
+                    submissionType = `Patchwork: <a href="${pwUrl}" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: underline;">${review.patchwork_series_id}</a>`;
                 } else if (review.hash) {
                     submissionType = `Hash: ${review.hash.substring(0, 12)}`;
                 } else {
