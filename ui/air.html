@@ -613,8 +613,13 @@
 
         <!-- Review History Tab -->
         <div class="section tab-content active" id="tab-history">
+            <h3>Review Counts (6-hour buckets)</h3>
             <div class="chart-container">
                 <canvas id="reviewChart"></canvas>
+            </div>
+            <h3 style="margin-top: 40px;">Daily Averages</h3>
+            <div class="chart-container">
+                <canvas id="averagesChart"></canvas>
             </div>
         </div>
 
@@ -847,12 +852,16 @@
 
         // Initialize and update review chart
         let reviewChart = null;
+        let averagesChart = null;
         loadReviewChart();
+        loadAveragesChart();
         setInterval(loadReviewChart, 30000); // Refresh every 30 seconds
+        setInterval(loadAveragesChart, 30000); // Refresh every 30 seconds
 
         // Refresh chart and review list when filters change
         document.getElementById('superuserMode').addEventListener('change', function() {
             loadReviewChart();
+            loadAveragesChart();
             listReviews();
         });
         document.getElementById('feedbackOnlyMode').addEventListener('change', function() {
@@ -1129,6 +1138,271 @@
                 }
             } catch (error) {
                 console.error('Error loading review chart:', error);
+            }
+        }
+
+        async function loadAveragesChart() {
+            const token = getToken();
+            const superuser = document.getElementById('superuserMode').checked;
+
+            // Allow loading public reviews if no token and "All users" is checked
+            const publicMode = !token && superuser;
+
+            if (!token && !publicMode) {
+                return; // Skip chart if no token and not in public mode
+            }
+
+            try {
+                // Fetch review data - get more reviews to build time series
+                let url = `${API_BASE}/reviews?limit=200`;
+
+                if (publicMode) {
+                    // No token, loading public reviews
+                    url += '&public_only=true';
+                } else {
+                    // Has token
+                    url += `&token=${token}`;
+                    if (superuser) {
+                        url += '&superuser=true';
+                    }
+                }
+
+                const response = await fetch(url);
+                const result = await response.json();
+
+                if (!response.ok || !result.reviews) {
+                    console.error('Failed to fetch reviews:', result);
+                    return;
+                }
+
+                console.log(`Fetched ${result.reviews.length} reviews for averages chart`);
+
+                // Check if any review has cost data (indicates superuser)
+                const hasCostData = result.reviews.some(r => r.cost_usd !== undefined);
+
+                // Group reviews by day and calculate averages
+                const dataByDay = {};
+
+                result.reviews.forEach(review => {
+                    // Only process completed reviews with timing data
+                    if (review.status !== 'done' || !review.duration_seconds || !review.patch_count || review.patch_count === 0) {
+                        return;
+                    }
+
+                    // Parse date and get day (midnight)
+                    const timestamp = parseUTCDate(review.date);
+                    timestamp.setHours(0, 0, 0, 0);
+                    const dayKey = timestamp.toISOString();
+
+                    if (!dataByDay[dayKey]) {
+                        dataByDay[dayKey] = {
+                            totalTime: 0,  // Total wall-clock time (not per-patch, reviews run in parallel)
+                            totalCostPerPatch: 0,
+                            count: 0,
+                            costCount: 0  // Separate count for reviews with cost data
+                        };
+                    }
+
+                    // Total review duration (wall-clock time, accounts for parallel processing)
+                    dataByDay[dayKey].totalTime += review.duration_seconds;
+                    dataByDay[dayKey].count++;
+
+                    if (review.cost_usd) {
+                        const costPerPatch = review.cost_usd / review.patch_count;
+                        dataByDay[dayKey].totalCostPerPatch += costPerPatch;
+                        dataByDay[dayKey].costCount++;
+                    }
+                });
+
+                console.log('Data by day:', dataByDay);
+
+                // Convert to sorted arrays with averages
+                const days = Object.keys(dataByDay).sort();
+                const avgTimeData = days.map(day => {
+                    const avg = dataByDay[day].totalTime / dataByDay[day].count;
+                    return { x: day, y: avg || null };
+                });
+                const avgCostData = days.map(day => {
+                    if (dataByDay[day].costCount === 0) return { x: day, y: null };
+                    const avg = dataByDay[day].totalCostPerPatch / dataByDay[day].costCount;
+                    return { x: day, y: avg || null };
+                });
+
+                console.log('Chart data - Avg Time:', avgTimeData, 'Avg Cost:', avgCostData);
+
+                // Create or update chart
+                const ctx = document.getElementById('averagesChart');
+
+                if (averagesChart) {
+                    // Update existing chart
+                    averagesChart.data.datasets[0].data = avgTimeData;
+
+                    // Update or add cost dataset
+                    if (hasCostData) {
+                        if (averagesChart.data.datasets.length > 1) {
+                            averagesChart.data.datasets[1].data = avgCostData;
+                        } else {
+                            averagesChart.data.datasets.push({
+                                label: 'Avg Cost per Patch ($)',
+                                data: avgCostData,
+                                borderColor: '#ffc107',
+                                backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                                tension: 0.1,
+                                fill: false,
+                                spanGaps: false,
+                                yAxisID: 'y1'
+                            });
+                        }
+                        // Ensure secondary axis exists
+                        if (!averagesChart.options.scales.y1) {
+                            averagesChart.options.scales.y1 = {
+                                type: 'linear',
+                                position: 'right',
+                                beginAtZero: true,
+                                grid: {
+                                    drawOnChartArea: false
+                                },
+                                ticks: {
+                                    color: getComputedStyle(document.documentElement).getPropertyValue('--text-primary'),
+                                    callback: function(value) {
+                                        return '$' + value.toFixed(2);
+                                    }
+                                }
+                            };
+                        }
+                    } else {
+                        // Remove cost dataset if present
+                        if (averagesChart.data.datasets.length > 1) {
+                            averagesChart.data.datasets.splice(1, 1);
+                        }
+                        // Remove secondary axis
+                        delete averagesChart.options.scales.y1;
+                    }
+
+                    averagesChart.update();
+                } else {
+                    // Create new chart
+                    const datasets = [
+                        {
+                            label: 'Avg Review Time (seconds)',
+                            data: avgTimeData,
+                            borderColor: '#007bff',
+                            backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                            tension: 0.1,
+                            fill: true,
+                            spanGaps: false,
+                            yAxisID: 'y'
+                        }
+                    ];
+
+                    // Add cost dataset if we have cost data
+                    if (hasCostData) {
+                        datasets.push({
+                            label: 'Avg Cost per Patch ($)',
+                            data: avgCostData,
+                            borderColor: '#ffc107',
+                            backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                            tension: 0.1,
+                            fill: false,
+                            spanGaps: false,
+                            yAxisID: 'y1'
+                        });
+                    }
+
+                    const scales = {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'day',
+                                displayFormats: {
+                                    day: 'MMM d'
+                                }
+                            },
+                            grid: {
+                                color: getComputedStyle(document.documentElement).getPropertyValue('--border-color')
+                            },
+                            ticks: {
+                                color: getComputedStyle(document.documentElement).getPropertyValue('--text-primary')
+                            }
+                        },
+                        y: {
+                            type: 'linear',
+                            position: 'left',
+                            beginAtZero: true,
+                            grid: {
+                                color: getComputedStyle(document.documentElement).getPropertyValue('--border-color')
+                            },
+                            ticks: {
+                                color: getComputedStyle(document.documentElement).getPropertyValue('--text-primary'),
+                                callback: function(value) {
+                                    return Math.round(value) + 's';
+                                }
+                            }
+                        }
+                    };
+
+                    // Add secondary y-axis for cost if we have cost data
+                    if (hasCostData) {
+                        scales.y1 = {
+                            type: 'linear',
+                            position: 'right',
+                            beginAtZero: true,
+                            grid: {
+                                drawOnChartArea: false
+                            },
+                            ticks: {
+                                color: getComputedStyle(document.documentElement).getPropertyValue('--text-primary'),
+                                callback: function(value) {
+                                    return '$' + value.toFixed(2);
+                                }
+                            }
+                        };
+                    }
+
+                    averagesChart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            datasets: datasets
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            interaction: {
+                                mode: 'index',
+                                intersect: false,
+                            },
+                            plugins: {
+                                legend: {
+                                    position: 'top',
+                                    labels: {
+                                        color: getComputedStyle(document.documentElement).getPropertyValue('--text-primary')
+                                    }
+                                },
+                                tooltip: {
+                                    mode: 'index',
+                                    intersect: false,
+                                    callbacks: {
+                                        label: function(context) {
+                                            let label = context.dataset.label || '';
+                                            if (label) {
+                                                label += ': ';
+                                            }
+                                            if (context.dataset.yAxisID === 'y1') {
+                                                label += '$' + context.parsed.y.toFixed(2);
+                                            } else {
+                                                label += Math.round(context.parsed.y) + 's';
+                                            }
+                                            return label;
+                                        }
+                                    }
+                                }
+                            },
+                            scales: scales
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading averages chart:', error);
             }
         }
 
@@ -1643,21 +1917,39 @@
         }
 
         function updateChartColors() {
-            if (!reviewChart) return;
-
             const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-primary');
             const borderColor = getComputedStyle(document.documentElement).getPropertyValue('--border-color');
 
-            // Update legend colors
-            reviewChart.options.plugins.legend.labels.color = textColor;
+            if (reviewChart) {
+                // Update legend colors
+                reviewChart.options.plugins.legend.labels.color = textColor;
 
-            // Update axis colors
-            reviewChart.options.scales.x.grid.color = borderColor;
-            reviewChart.options.scales.x.ticks.color = textColor;
-            reviewChart.options.scales.y.grid.color = borderColor;
-            reviewChart.options.scales.y.ticks.color = textColor;
+                // Update axis colors
+                reviewChart.options.scales.x.grid.color = borderColor;
+                reviewChart.options.scales.x.ticks.color = textColor;
+                reviewChart.options.scales.y.grid.color = borderColor;
+                reviewChart.options.scales.y.ticks.color = textColor;
 
-            reviewChart.update();
+                reviewChart.update();
+            }
+
+            if (averagesChart) {
+                // Update legend colors
+                averagesChart.options.plugins.legend.labels.color = textColor;
+
+                // Update axis colors
+                averagesChart.options.scales.x.grid.color = borderColor;
+                averagesChart.options.scales.x.ticks.color = textColor;
+                averagesChart.options.scales.y.grid.color = borderColor;
+                averagesChart.options.scales.y.ticks.color = textColor;
+
+                // Update y1 axis if it exists
+                if (averagesChart.options.scales.y1) {
+                    averagesChart.options.scales.y1.ticks.color = textColor;
+                }
+
+                averagesChart.update();
+            }
         }
 
         function updateThemeButton(theme) {
