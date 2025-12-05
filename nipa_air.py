@@ -146,24 +146,11 @@ def create_app(config_path=None, skip_semcode=False, keep_temp_trees=False):
         """List recent reviews (for UI)"""
         token = request.args.get('token')
         limit = request.args.get('limit', 50, type=int)
-        superuser = request.args.get('superuser', 'false').lower() == 'true'
-        public_only = request.args.get('public_only', 'false').lower() == 'true'
-
-        # Token is optional if requesting public_only reviews
-        if not public_only:
-            if not token or not token_auth.validate_token(token):
-                return jsonify({'error': 'Invalid or missing token'}), 401
-
-            # Check if user is actually a superuser if they're requesting superuser mode
-            is_superuser = token_auth.is_superuser(token)
-            if superuser and not is_superuser:
-                return jsonify({'error': 'Superuser access denied'}), 403
-        else:
-            is_superuser = False
+        filter_user_param = request.args.get('filter_user', 'true').lower()
+        filter_user = filter_user_param in ('true', '1', 'yes')
 
         try:
-            reviews = service.list_reviews(token, limit, superuser=superuser and is_superuser,
-                                          public_only=public_only)
+            reviews = service.list_reviews(token, limit, filter_user=filter_user)
             return jsonify({'reviews': reviews}), 200
         except Exception as e:
             print(f"Error listing reviews: {e}")
