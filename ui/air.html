@@ -1557,6 +1557,11 @@
                     ? `<span style="color: var(--text-muted); font-size: 11px;">🤖 ${review.model}</span>`
                     : '';
 
+                // Duration (for completed/error reviews)
+                const duration = review.duration_seconds
+                    ? `<span style="color: var(--text-muted); font-size: 11px;">⏱️ ${formatDuration(review.duration_seconds)}</span>`
+                    : '';
+
                 // Private badge (only show for private reviews)
                 const visibilityBadge = review.is_public
                     ? ''
@@ -1581,6 +1586,7 @@
                                     <span class="submission-type">${submissionType}</span>
                                     ${tokenOwner ? `<span class="token-owner">${tokenOwner}</span>` : ''}
                                     ${model}
+                                    ${duration}
                                     ${cost}
                                 </div>
                                 <div class="review-date">

@@ -321,6 +321,17 @@ class AirService:
             if is_requesting_superuser and r.get('cost_usd'):
                 review_info['cost_usd'] = r['cost_usd']
 
+            # Calculate duration for completed/error reviews
+            if r.get('start') and r.get('end'):
+                try:
+                    from datetime import datetime
+                    start_dt = datetime.fromisoformat(r['start'])
+                    end_dt = datetime.fromisoformat(r['end'])
+                    duration_seconds = (end_dt - start_dt).total_seconds()
+                    review_info['duration_seconds'] = int(duration_seconds)
+                except (ValueError, TypeError):
+                    pass
+
             # Add token owner name if token_auth is available
             if self.token_auth:
                 token_info = self.token_auth.get_token_info(r.get('token', ''))
