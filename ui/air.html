@@ -1552,6 +1552,11 @@
                     ? `<span style="color: var(--text-muted); font-size: 11px;">$${review.cost_usd.toFixed(4)}</span>`
                     : '';
 
+                // Model
+                const model = review.model
+                    ? `<span style="color: var(--text-muted); font-size: 11px;">🤖 ${review.model}</span>`
+                    : '';
+
                 // Private badge (only show for private reviews)
                 const visibilityBadge = review.is_public
                     ? ''
@@ -1575,6 +1580,7 @@
                                 <div class="review-meta">
                                     <span class="submission-type">${submissionType}</span>
                                     ${tokenOwner ? `<span class="token-owner">${tokenOwner}</span>` : ''}
+                                    ${model}
                                     ${cost}
                                 </div>
                                 <div class="review-date">
