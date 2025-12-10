@@ -178,7 +178,7 @@ class LLMWorker:
         prompt_msg = f"""
         Current directory is the root of a Linux Kernel git repository.
         Read the prompt from {full_prompt_path}.
-        Using the prompt, review the HEAD commit.
+        Using the prompt, do a deep dive regression analysis of the HEAD commit.
         Use commit range {git_range} for the false-positive-guide.md section.
         """
 
