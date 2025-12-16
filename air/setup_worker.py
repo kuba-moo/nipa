@@ -34,6 +34,24 @@ class SetupWorker:
         self.wt_id = wt_id
         self.patchwork = patchwork
 
+    def _wait_for_tree_quiesce(self, timeout: int = 60):
+        """Wait for index.lock to be released and index to be stable."""
+        wt_path = self.worktree_mgr.get_work_tree_path(self.wt_id)
+        if not wt_path:
+            return True
+
+        self._wait_for_index_lock(timeout=timeout)
+        for i in range(4):
+            result = subprocess.run(['git', 'status'],
+                                    cwd=wt_path, capture_output=True,
+                                    check=False)
+            if result.returncode == 0:
+                return True
+            log_thread(f"git status failed in work tree {self.wt_id}, retrying (attempt {i + 1}/4)\n{repr(result)}")
+            self._wait_for_index_lock(timeout=timeout)
+
+        return False
+
     def _wait_for_index_lock(self, timeout: int = 60):
         """Wait for git index.lock to be released
 
@@ -107,7 +125,7 @@ class SetupWorker:
         token = request['token']
 
         # Wait for any existing git lock to be released
-        if not self._wait_for_index_lock():
+        if not self._wait_for_tree_quiesce():
             self.storage.update_review_status(review_id, 'error', 'Timeout waiting for git index.lock')
             self.storage.write_message(token, review_id, 'Timeout waiting for git index.lock')
             return
