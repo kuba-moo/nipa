@@ -288,7 +288,10 @@ class SetupWorker:
         if commit_hashes is None:
             return None, None
 
-        git_range = f"{base_ref}..HEAD"
+        base_hash = subprocess.run(['git', 'rev-parse', base_ref],
+                                   cwd=wt_path, capture_output=True,
+                                   text=True, check=True).stdout.strip()
+        git_range = f"{base_hash}..{commit_hashes[-1]}"
         return commit_hashes, git_range
 
     def _apply_patches(self, wt_path: str, patches: List[str],
