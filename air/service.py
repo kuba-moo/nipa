@@ -3,6 +3,7 @@
 """Main AIR service orchestrator"""
 
 import os
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
 from pw import Patchwork
@@ -183,6 +184,19 @@ class AirService:
         # JSON format is only available to superusers
         if fmt == 'json' and not is_superuser:
             return None
+
+        # Delay public access to review content by 8 hours
+        # Users must authenticate to access fresh public reviews
+        if is_public and not (is_owner or is_superuser) and fmt:
+            review_date_str = metadata.get('date')
+            if review_date_str:
+                review_date = datetime.fromisoformat(review_date_str)
+                age = datetime.utcnow() - review_date
+                if age < timedelta(hours=8):
+                    hours_remaining = 8 - (age.total_seconds() / 3600)
+                    raise ValueError(
+                        f"Public read access available in {hours_remaining:.1f} hours."
+                    )
 
         # Build response
         result = {

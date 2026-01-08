@@ -454,7 +454,15 @@
             fetch(url)
                 .then(response => {
                     if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        // Try to parse error message from response body
+                        return response.json().then(data => {
+                            throw new Error(data.error || `HTTP ${response.status}: ${response.statusText}`);
+                        }).catch(jsonError => {
+                            // If JSON parsing fails, use the original error
+                            if (jsonError.message && !jsonError.message.includes('JSON'))
+                                throw jsonError;
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        });
                     }
                     return response.json();
                 })

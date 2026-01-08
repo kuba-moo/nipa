@@ -135,6 +135,8 @@ def create_app(config_path=None, skip_semcode=False, keep_temp_trees=False):
             if result is None:
                 return jsonify({'error': 'Review not found or access denied'}), 404
             return jsonify(result), 200
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 403
         except Exception as e:
             print(f"Error getting review: {e}")
             import traceback
