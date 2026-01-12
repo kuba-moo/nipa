@@ -134,7 +134,8 @@ def strip_commit_header(review_text: str) -> str:
 def format_email(review_text: str, patch_info: Dict, from_addr: str,
                  to_addrs: List[str], cc_addrs: List[str],
                  header: Optional[str] = None,
-                 footer: Optional[str] = None) -> str:
+                 footer: Optional[str] = None,
+                 pw_bot: Optional[str] = None) -> str:
     """Format review as an email message"""
     # Extract subject from the patch
     original_subject = patch_info.get('name', 'patch')
@@ -147,7 +148,8 @@ def format_email(review_text: str, patch_info: Dict, from_addr: str,
 
     # Build email body
     body_lines = [
-        "This is an AI-generated review of your patch.",
+        "This is an AI-generated review of your patch. The human sending this",
+        "email has considered the AI review valid, or at least pausible.",
     ]
 
     # Add optional header lines after the intro (interpret \n as newlines)
@@ -164,14 +166,24 @@ def format_email(review_text: str, patch_info: Dict, from_addr: str,
     body_lines.extend(clean_review.rstrip().split('\n'))
 
     # Add footer with standard email signature separator (interpret \n as newlines)
-    if footer:
-        footer_text = footer.replace('\\n', '\n')
+    if footer or pw_bot:
         body_lines.extend([
-            "",
             "-- ",
         ])
+    if pw_bot:
+        body_lines.extend([
+            f"pw-bot: {pw_bot}",
+        ])
+        if footer:
+            body_lines.extend([
+                "",
+            ])
+    if footer:
+        footer_text = footer.replace('\\n', '\n')
         for line in footer_text.rstrip().split('\n'):
             body_lines.append(line)
+
+    # Add pw-bot directive if specified
 
     body = '\n'.join(body_lines)
 
@@ -419,8 +431,6 @@ Configuration file:
                         help='Additional Cc addresses (can be repeated)')
     parser.add_argument('--dry-run', action='store_true',
                         help='Show what would be sent without actually sending')
-    parser.add_argument('--skip-empty', action='store_true',
-                        help='Skip patches with no review comments')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='Verbose output')
     parser.add_argument('--show-email', action='store_true',
@@ -428,6 +438,8 @@ Configuration file:
     parser.add_argument('--only', type=int, action='append', dest='only_patches',
                         metavar='N', default=[],
                         help='Only send replies for specific patch numbers (1-based, can be repeated)')
+    parser.add_argument('--pw-bot', dest='pw_bot', metavar='STRING',
+                        help='Add "pw-bot: STRING" footer to the first review email')
 
     args = parser.parse_args()
 
@@ -542,6 +554,7 @@ Configuration file:
     success_count = 0
     skip_count = 0
     fail_count = 0
+    first_email_sent = False
 
     with tempfile.TemporaryDirectory() as tmpdir:
         for i, review_text in enumerate(reviews):
@@ -561,20 +574,20 @@ Configuration file:
             patch_info = patch_info_list[i]
             message_id = patch_info.get('msgid', '')
 
-            # Check for empty review (None or empty string)
+            # Skip empty reviews (None or empty string)
             if review_text is None or review_text.strip() == '':
-                if args.skip_empty:
+                if args.verbose:
                     print(f"Patch {patch_num}: {colorize('SKIP', Colors.YELLOW)} (no comments)")
-                    skip_count += 1
-                    continue
-                # If not skipping, use a placeholder message
-                review_text = "(No review comments for this patch)"
+                skip_count += 1
+                continue
 
-            # Format the email
+            # Format the email (add pw-bot footer only to the first email)
+            pw_bot_arg = args.pw_bot if not first_email_sent else None
             email_content = format_email(
                 review_text, patch_info, args.from_addr, to_addrs, cc_addrs,
-                args.header, args.footer
+                args.header, args.footer, pw_bot_arg
             )
+            first_email_sent = True
 
             # Write to temp file
             email_file = os.path.join(tmpdir, f"review-{patch_num:04d}.txt")
