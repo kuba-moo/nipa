@@ -1900,6 +1900,17 @@
                     ? '<span class="feedback-badge">📝 Has feedback</span>'
                     : '';
 
+                // Admin feedback badge (from API, only visible to superusers)
+                let adminFeedbackBadge = '';
+                if (review.feedback) {
+                    const feedbackLabels = {
+                        'emailed': '📧 Emailed',
+                        'false-positive': '❌ False Positive',
+                        'false-negative': '⚠️ False Negative'
+                    };
+                    adminFeedbackBadge = `<span class="feedback-badge">${feedbackLabels[review.feedback] || review.feedback}</span>`;
+                }
+
                 // Determine submission type
                 let submissionType = '';
                 if (review.patchwork_series_id) {
@@ -1943,6 +1954,7 @@
                                 <span class="review-id">${review.review_id}</span>
                                 <div style="display: flex; gap: 8px; align-items: center;">
                                     ${feedbackBadge}
+                                    ${adminFeedbackBadge}
                                     ${visibilityBadge}
                                     <span class="status-badge status-${review.status}">${review.status}</span>
                                 </div>

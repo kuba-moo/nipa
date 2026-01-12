@@ -172,6 +172,66 @@ def create_app(config_path=None, skip_semcode=False, keep_temp_trees=False):
             traceback.print_exc()
             return jsonify({'error': 'Internal server error'}), 500
 
+    @app.route('/api/review/feedback', methods=['POST'])
+    def set_feedback():
+        """Set feedback for a review
+
+        For public_read reviews, no token is required.
+        For private reviews, the owner token or a superuser token is required.
+        """
+        data = request.get_json()
+        review_id = data.get('id')
+        feedback = data.get('feedback')
+        token = data.get('token')
+
+        if not review_id:
+            return jsonify({'error': 'Missing id parameter'}), 400
+        if not feedback:
+            return jsonify({'error': 'Missing feedback parameter'}), 400
+
+        # Validate feedback value
+        valid_values = ('emailed', 'false-positive', 'false-negative')
+        if feedback not in valid_values:
+            return jsonify({'error': f'Invalid feedback value. Must be one of: {valid_values}'}), 400
+
+        # Get review metadata to check authorization
+        metadata = service.storage.get_review_metadata(review_id)
+        if metadata is None:
+            return jsonify({'error': 'Review not found'}), 404
+
+        # Check authorization:
+        # - Public read reviews: no token required
+        # - Private reviews: owner token or superuser token required
+        review_token = metadata['token']
+        is_public = token_auth.is_public_read(review_token)
+
+        if not is_public:
+            # Private review - require authorization
+            if not token:
+                return jsonify({'error': 'Token required for private reviews'}), 401
+            if not token_auth.validate_token(token):
+                return jsonify({'error': 'Invalid token'}), 401
+
+            is_owner = token == review_token
+            is_superuser = token_auth.is_superuser(token)
+
+            if not (is_owner or is_superuser):
+                return jsonify({'error': 'Access denied'}), 403
+
+        try:
+            success = service.set_feedback(review_id, feedback)
+            if success:
+                return jsonify({'success': True}), 200
+            else:
+                return jsonify({'error': 'Review not found'}), 404
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+        except Exception as e:
+            print(f"Error setting feedback: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({'error': 'Internal server error'}), 500
+
     @app.route('/')
     def index():
         """Serve the UI"""

@@ -377,3 +377,26 @@ class ReviewStorage:
                 return f.read()
         except FileNotFoundError:
             return None
+
+    def set_feedback(self, review_id: str, feedback: str) -> bool:
+        """Set feedback for a review
+
+        Args:
+            review_id: Review ID
+            feedback: Feedback value (emailed, false-positive, false-negative)
+
+        Returns:
+            True if successful, False if review not found
+        """
+        valid_values = ('emailed', 'false-positive', 'false-negative')
+        if feedback not in valid_values:
+            raise ValueError(f"Invalid feedback value. Must be one of: {valid_values}")
+
+        with self.lock:
+            self.load_metadata()
+            if review_id not in self.reviews:
+                return False
+
+            self.reviews[review_id]['feedback'] = feedback
+            self.save_metadata()
+            return True

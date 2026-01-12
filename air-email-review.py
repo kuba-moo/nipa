@@ -68,6 +68,17 @@ class AirReplyClient:
         response.raise_for_status()
         return response.json()
 
+    def set_feedback(self, review_id: str, feedback: str) -> bool:
+        """Set feedback for a review"""
+        data = {'id': review_id, 'feedback': feedback}
+        if self.token:
+            data['token'] = self.token
+
+        response = self.session.post(f"{self.air_url}/api/review/feedback",
+                                     json=data, timeout=30)
+        response.raise_for_status()
+        return response.json().get('success', False)
+
     def get_patchwork_series(self, series_id: int) -> Dict:
         """Fetch series info from Patchwork API"""
         response = self.session.get(
@@ -440,6 +451,13 @@ Configuration file:
                         help='Only send replies for specific patch numbers (1-based, can be repeated)')
     parser.add_argument('--pw-bot', dest='pw_bot', metavar='STRING',
                         help='Add "pw-bot: STRING" footer to the first review email')
+    parser.add_argument('--feedback', dest='feedback', default='emailed',
+                        help='Feedback to record for this review (default: emailed). '
+                             'Valid values: emailed, false-positive, false-negative. '
+                             'If not "emailed", the email will not be sent. '
+                             'Use empty string or --no-feedback to skip setting feedback.')
+    parser.add_argument('--no-feedback', dest='no_feedback', action='store_true',
+                        help='Do not set feedback on the review')
 
     args = parser.parse_args()
 
@@ -522,6 +540,31 @@ Configuration file:
         sys.exit(1)
 
     reviews = review.get('review', [])
+
+    # Handle feedback
+    # --no-feedback or --feedback '' skips setting feedback
+    if args.no_feedback or args.feedback == '':
+        print("Skipping feedback (--no-feedback or empty --feedback)")
+    elif args.feedback:
+        # Validate feedback value
+        valid_values = ('emailed', 'false-positive', 'false-negative')
+        if args.feedback not in valid_values:
+            print(f"Error: Invalid feedback value '{args.feedback}'. "
+                  f"Must be one of: {', '.join(valid_values)}", file=sys.stderr)
+            sys.exit(1)
+
+        # Set feedback on the review
+        print(f"Setting feedback to '{args.feedback}'...")
+        try:
+            client.set_feedback(args.review_id, args.feedback)
+            print(colorize(f"Feedback set: {args.feedback}", Colors.GREEN))
+        except requests.exceptions.RequestException as e:
+            print(f"Warning: Failed to set feedback: {e}", file=sys.stderr)
+
+        # If feedback is not "emailed", skip sending emails
+        if args.feedback != 'emailed':
+            print(colorize(f"\nFeedback is '{args.feedback}', not sending emails.", Colors.YELLOW))
+            sys.exit(0)
 
     # Extract recipients from patches
     to_addrs, cc_addrs = extract_recipients(patch_info_list)

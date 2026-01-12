@@ -242,6 +242,10 @@ class AirService:
         if is_superuser and metadata.get('cost_usd'):
             result['cost_usd'] = metadata['cost_usd']
 
+        # Add feedback (only for superusers)
+        if is_superuser and metadata.get('feedback'):
+            result['feedback'] = metadata['feedback']
+
         # Add queue position if queued
         if metadata['status'] == 'queued':
             queue_len = self.queue.get_patch_count_ahead(review_id)
@@ -355,6 +359,10 @@ class AirService:
             if is_requesting_superuser and r.get('cost_usd'):
                 review_info['cost_usd'] = r['cost_usd']
 
+            # Add feedback (only for superusers)
+            if is_requesting_superuser and r.get('feedback'):
+                review_info['feedback'] = r['feedback']
+
             # Calculate duration for completed/error reviews
             if r.get('start') and r.get('end'):
                 try:
@@ -418,3 +426,15 @@ class AirService:
             result['total_cost_usd'] = round(total_cost, 2)
 
         return result
+
+    def set_feedback(self, review_id: str, feedback: str) -> bool:
+        """Set feedback for a review
+
+        Args:
+            review_id: Review ID
+            feedback: Feedback value (emailed, false-positive, false-negative)
+
+        Returns:
+            True if successful, False if review not found
+        """
+        return self.storage.set_feedback(review_id, feedback)

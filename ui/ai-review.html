@@ -365,6 +365,10 @@
                     <label>Duration:</label>
                     <span id="review-duration"></span>
                 </div>
+                <div class="review-info-item" id="feedback-info" style="display: none;">
+                    <label>Feedback:</label>
+                    <span id="review-feedback"></span>
+                </div>
             </div>
             <div id="progress-info" style="margin-top: 15px; display: none;">
                 <label style="font-weight: bold; color: var(--text-secondary);">Progress:</label>
@@ -539,6 +543,17 @@
                 const durationSeconds = (endDate - startDate) / 1000;
                 document.getElementById('duration-info').style.display = 'block';
                 document.getElementById('review-duration').textContent = formatDuration(durationSeconds);
+            }
+
+            // Feedback (only shown for superusers)
+            if (data.feedback) {
+                const feedbackLabels = {
+                    'emailed': '📧 Emailed',
+                    'false-positive': '❌ False Positive',
+                    'false-negative': '⚠️ False Negative'
+                };
+                document.getElementById('feedback-info').style.display = 'block';
+                document.getElementById('review-feedback').textContent = feedbackLabels[data.feedback] || data.feedback;
             }
 
             // Message (error or warning)
