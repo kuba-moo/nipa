@@ -400,3 +400,21 @@ class ReviewStorage:
             self.reviews[review_id]['feedback'] = feedback
             self.save_metadata()
             return True
+
+    def delete_review(self, review_id: str) -> bool:
+        """Delete a review from metadata
+
+        Args:
+            review_id: Review ID
+
+        Returns:
+            True if successful, False if review not found
+        """
+        with self.lock:
+            self.load_metadata()
+            if review_id not in self.reviews:
+                return False
+
+            del self.reviews[review_id]
+            self.save_metadata()
+            return True

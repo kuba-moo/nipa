@@ -438,3 +438,14 @@ class AirService:
             True if successful, False if review not found
         """
         return self.storage.set_feedback(review_id, feedback)
+
+    def delete_review(self, review_id: str) -> bool:
+        """Delete a review
+
+        Args:
+            review_id: Review ID
+
+        Returns:
+            True if successful, False if review not found
+        """
+        return self.storage.delete_review(review_id)

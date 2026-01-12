@@ -232,6 +232,36 @@ def create_app(config_path=None, skip_semcode=False, keep_temp_trees=False):
             traceback.print_exc()
             return jsonify({'error': 'Internal server error'}), 500
 
+    @app.route('/api/review', methods=['DELETE'])
+    def delete_review():
+        """Delete a review (superuser only)"""
+        review_id = request.args.get('id')
+        token = request.args.get('token')
+
+        if not review_id:
+            return jsonify({'error': 'Missing id parameter'}), 400
+
+        if not token:
+            return jsonify({'error': 'Token required'}), 401
+
+        if not token_auth.validate_token(token):
+            return jsonify({'error': 'Invalid token'}), 401
+
+        if not token_auth.is_superuser(token):
+            return jsonify({'error': 'Superuser access required'}), 403
+
+        try:
+            success = service.delete_review(review_id)
+            if success:
+                return jsonify({'success': True}), 200
+            else:
+                return jsonify({'error': 'Review not found'}), 404
+        except Exception as e:
+            print(f"Error deleting review: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({'error': 'Internal server error'}), 500
+
     @app.route('/')
     def index():
         """Serve the UI"""
