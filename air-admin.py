@@ -84,6 +84,36 @@ def delete_review(url: str, token: str, review_id: str) -> bool:
         sys.exit(1)
 
 
+def create_token(url: str, token: str, name: str) -> str:
+    """Create a new token (superuser only)
+
+    Args:
+        url: AIR service URL
+        token: API token (must be superuser)
+        name: Human-readable name for the new token
+
+    Returns:
+        The newly created token string
+    """
+    api_url = f"{url}/api/token"
+    payload = {
+        'token': token,
+        'name': name,
+    }
+
+    try:
+        response = requests.post(api_url, json=payload, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+        return data.get('token')
+    except requests.exceptions.RequestException as e:
+        print(f"Error creating token: {e}", file=sys.stderr)
+        sys.exit(1)
+    except json.JSONDecodeError as e:
+        print(f"Error parsing response: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 def main():
     # Load config file first to get defaults
     config = load_config()
@@ -95,6 +125,9 @@ def main():
 Examples:
   # Delete a review
   %(prog)s --url https://example.com/air --token mytoken --delete abc-123-def
+
+  # Create a new token
+  %(prog)s --url https://example.com/air --token mytoken --create-token "User Name"
 
 Configuration file:
   You can create ~/.air.conf to avoid repeating common parameters:
@@ -113,6 +146,8 @@ Configuration file:
                        help='API authentication token (required for admin operations)')
     parser.add_argument('--delete', metavar='REVIEW_ID',
                        help='Delete the specified review (requires superuser token)')
+    parser.add_argument('--create-token', metavar='NAME',
+                       help='Create a new token with the given name (requires superuser token)')
 
     args = parser.parse_args()
 
@@ -134,8 +169,8 @@ Configuration file:
     args.url = args.url.rstrip('/')
 
     # Check that at least one operation is specified
-    if not args.delete:
-        parser.error('No operation specified. Use --delete REVIEW_ID')
+    if not args.delete and not getattr(args, 'create_token', None):
+        parser.error('No operation specified. Use --delete REVIEW_ID or --create-token NAME')
 
     # Handle --delete operation
     if args.delete:
@@ -149,6 +184,23 @@ Configuration file:
             print(colorize(f"Review {review_id} deleted successfully", Colors.GREEN))
         else:
             print(colorize("Failed to delete review", Colors.RED), file=sys.stderr)
+            sys.exit(1)
+        return
+
+    # Handle --create-token operation
+    if getattr(args, 'create_token', None):
+        if not args.token:
+            parser.error('--create-token requires --token (must be superuser)')
+
+        name = args.create_token
+        print(f"Creating token for '{name}'...")
+        new_token = create_token(args.url, args.token, name)
+        if new_token:
+            print(colorize("Token created successfully", Colors.GREEN))
+            print(f"Name: {name}")
+            print(f"Token: {colorize(new_token, Colors.CYAN)}")
+        else:
+            print(colorize("Failed to create token", Colors.RED), file=sys.stderr)
             sys.exit(1)
         return
 

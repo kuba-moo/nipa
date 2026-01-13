@@ -2,8 +2,10 @@
 
 """Token authentication for AIR service"""
 
-import yaml
+import secrets
+from datetime import date
 from typing import Optional, Dict
+import yaml
 
 
 class TokenAuth:
@@ -85,3 +87,50 @@ class TokenAuth:
             Dictionary with token information, or None if not found
         """
         return self.tokens.get(token)
+
+    def create_token(self, name: str) -> str:
+        """Create a new token and save to database
+
+        Args:
+            name: Human-readable name/description for the token
+
+        Returns:
+            The newly created token string
+        """
+        # Generate a secure random token
+        token = secrets.token_urlsafe(32)
+
+        # Create token info
+        token_info = {
+            'name': name,
+            'date': date.today().isoformat(),
+            'superuser': False,
+            'public_read': False
+        }
+
+        # Add to in-memory store
+        self.tokens[token] = token_info
+
+        # Save to YAML file
+        self._save_tokens()
+
+        return token
+
+    def _save_tokens(self):
+        """Save all tokens to YAML file"""
+        token_list = []
+        for token, info in self.tokens.items():
+            token_entry = {
+                'token': token,
+                'name': info.get('name', ''),
+                'date': info.get('date', ''),
+            }
+            # Only include optional fields if they're set to True
+            if info.get('superuser'):
+                token_entry['superuser'] = True
+            if info.get('public_read'):
+                token_entry['public_read'] = True
+            token_list.append(token_entry)
+
+        with open(self.token_db_path, 'w') as f:
+            yaml.safe_dump({'tokens': token_list}, f, default_flow_style=False)

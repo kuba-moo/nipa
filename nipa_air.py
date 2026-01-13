@@ -262,6 +262,34 @@ def create_app(config_path=None, skip_semcode=False, keep_temp_trees=False):
             traceback.print_exc()
             return jsonify({'error': 'Internal server error'}), 500
 
+    @app.route('/api/token', methods=['POST'])
+    def create_token():
+        """Create a new token (superuser only)"""
+        data = request.get_json()
+        token = data.get('token')
+        name = data.get('name')
+
+        if not token:
+            return jsonify({'error': 'Token required'}), 401
+
+        if not token_auth.validate_token(token):
+            return jsonify({'error': 'Invalid token'}), 401
+
+        if not token_auth.is_superuser(token):
+            return jsonify({'error': 'Superuser access required'}), 403
+
+        if not name:
+            return jsonify({'error': 'Missing name parameter'}), 400
+
+        try:
+            new_token = token_auth.create_token(name)
+            return jsonify({'success': True, 'token': new_token, 'name': name}), 200
+        except Exception as e:
+            print(f"Error creating token: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({'error': 'Internal server error'}), 500
+
     @app.route('/')
     def index():
         """Serve the UI"""
