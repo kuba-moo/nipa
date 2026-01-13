@@ -192,8 +192,8 @@ class AirService:
             if review_date_str:
                 review_date = datetime.fromisoformat(review_date_str)
                 age = datetime.utcnow() - review_date
-                if age < timedelta(hours=8):
-                    hours_remaining = 8 - (age.total_seconds() / 3600)
+                if age < timedelta(hours=12):
+                    hours_remaining = 12 - (age.total_seconds() / 3600)
                     raise ValueError(
                         f"Public read access available in {hours_remaining:.1f} hours."
                     )
