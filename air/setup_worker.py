@@ -411,14 +411,29 @@ class SetupWorker:
         log_thread(f"Running semcode-index for range {git_range}")
         try:
             result = subprocess.run(['semcode-index', '-s', '.', '--git', git_range],
-                                  cwd=wt_path, capture_output=True, text=True, timeout=300)
+                                  cwd=wt_path, capture_output=True, text=True, timeout=400)
             if result.returncode != 0:
                 log_thread(f"semcode-index failed: {result.stderr}")
                 return False
-            return True
         except subprocess.TimeoutExpired:
             log_thread("semcode-index timed out")
             return False
         except Exception as e:
             log_thread(f"semcode-index error: {e}")
             return False
+
+        log_thread("Running semcode-index for lore netdev")
+        try:
+            result = subprocess.run(['semcode-index', '--lore', 'netdev'],
+                                  cwd=wt_path, capture_output=True, text=True, timeout=400)
+            if result.returncode != 0:
+                log_thread(f"semcode-index --lore failed: {result.stderr}")
+                return False
+        except subprocess.TimeoutExpired:
+            log_thread("semcode-index --lore timed out")
+            return False
+        except Exception as e:
+            log_thread(f"semcode-index --lore error: {e}")
+            return False
+
+        return True
