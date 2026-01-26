@@ -324,29 +324,61 @@
         }
 
         .status-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-bottom: 20px;
-        }
-
-        .status-card {
-            background: var(--bg-card);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
             padding: 15px;
+            background: var(--bg-card);
             border-radius: 4px;
-            text-align: center;
+            font-size: 14px;
+            color: var(--text-secondary);
         }
 
-        .status-card .label {
-            font-size: 12px;
+        .status-item {
+            color: var(--text-secondary);
+        }
+
+        .status-item strong {
+            color: var(--heading-color);
+        }
+
+        .status-separator {
             color: var(--text-muted);
+        }
+
+        .stats-table-container {
+            margin-bottom: 30px;
+        }
+
+        .stats-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        .stats-table th,
+        .stats-table td {
+            padding: 8px 12px;
+            text-align: right;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .stats-table th:first-child,
+        .stats-table td:first-child {
+            text-align: left;
+            font-weight: 500;
+        }
+
+        .stats-table th {
+            color: var(--text-muted);
+            font-weight: 500;
+            font-size: 12px;
             text-transform: uppercase;
         }
 
-        .status-card .value {
-            font-size: 24px;
-            font-weight: bold;
-            color: var(--heading-color);
+        .stats-table tbody tr:hover {
+            background: var(--bg-tertiary);
         }
 
         .review-list {
@@ -651,6 +683,24 @@
 
         <!-- Review History Tab -->
         <div class="section tab-content active" id="tab-history">
+            <div id="statsTable" class="stats-table-container">
+                <table class="stats-table">
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th>Completed</th>
+                            <th>Feedback</th>
+                            <th>Errors</th>
+                            <th>Cost</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Last 7 days</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
+                        <tr><td>Last 28 days</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
+                        <tr><td>Total</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
+                    </tbody>
+                </table>
+            </div>
             <h3>Review Counts (6-hour buckets)</h3>
             <div class="chart-container">
                 <canvas id="reviewChart"></canvas>
@@ -1521,51 +1571,98 @@
 
                 const grid = document.getElementById('statusGrid');
 
-                // Determine if we have cost data
-                const hasCost = data.total_cost_usd !== undefined;
+                // Helper to format relative time
+                function formatRelativeTime(isoString) {
+                    if (!isoString) return null;
+                    const date = new Date(isoString + 'Z');
+                    const now = new Date();
+                    const diffMs = now - date;
+                    const diffMins = Math.floor(diffMs / 60000);
+                    const diffHours = Math.floor(diffMs / 3600000);
 
-                // Adjust grid to fit all boxes on one line
-                if (hasCost) {
-                    grid.style.gridTemplateColumns = 'repeat(6, 1fr)';
-                } else {
-                    grid.style.gridTemplateColumns = 'repeat(5, 1fr)';
+                    if (diffMins < 1) return 'just now';
+                    if (diffMins < 60) return `${diffMins}m ago`;
+                    if (diffHours < 24) return `${diffHours}h ago`;
+                    return `${Math.floor(diffHours / 24)}d ago`;
                 }
 
-                // Build status cards HTML
-                let statusHTML = `
-                    <div class="status-card">
-                        <div class="label">Queue Size</div>
-                        <div class="value">${data.queue_size}</div>
-                    </div>
-                    <div class="status-card">
-                        <div class="label">Queued</div>
-                        <div class="value">${data.review_counts.queued}</div>
-                    </div>
-                    <div class="status-card">
-                        <div class="label">In Progress</div>
-                        <div class="value">${data.review_counts['in-progress']}</div>
-                    </div>
-                    <div class="status-card">
-                        <div class="label">Completed</div>
-                        <div class="value">${data.review_counts.done}</div>
-                    </div>
-                    <div class="status-card">
-                        <div class="label">Errors</div>
-                        <div class="value">${data.review_counts.error}</div>
-                    </div>
+                // Build active status text
+                let activeText = `Active: ${data.active_count}`;
+                if (data.active_count > 0 && data.oldest_active_start) {
+                    activeText += ` (started ${formatRelativeTime(data.oldest_active_start)})`;
+                }
+
+                // Build 24h stats text
+                let stats24h = `Last 24h: ${data.completed_24h} completed`;
+                if (data.feedback_24h > 0) {
+                    stats24h += `, ${data.feedback_24h} feedback`;
+                }
+                if (data.errors_24h > 0) {
+                    stats24h += `, ${data.errors_24h} errors`;
+                }
+                if (data.last_completed) {
+                    stats24h += ` (last ${formatRelativeTime(data.last_completed)})`;
+                }
+
+                // Single-line compact display
+                grid.style.display = 'flex';
+                grid.style.alignItems = 'center';
+                grid.style.justifyContent = 'center';
+                grid.style.gap = '8px';
+                grid.style.flexWrap = 'wrap';
+
+                grid.innerHTML = `
+                    <span class="status-item">Queue: <strong>${data.queue_size}</strong></span>
+                    <span class="status-separator">|</span>
+                    <span class="status-item">${activeText}</span>
+                    <span class="status-separator">|</span>
+                    <span class="status-item">${stats24h}</span>
                 `;
 
-                // Add cost card if cost data is present (indicates superuser)
-                if (hasCost) {
-                    statusHTML += `
-                    <div class="status-card">
-                        <div class="label">Total Cost</div>
-                        <div class="value">$${data.total_cost_usd.toFixed(2)}</div>
-                    </div>
+                // Update stats table in Review History tab
+                if (data.stats) {
+                    const s = data.stats;
+                    const hasCost = s.total.cost !== null;
+                    const formatCost = (cost) => cost !== null ? `$${cost.toFixed(2)}` : '-';
+
+                    const tableContainer = document.getElementById('statsTable');
+                    tableContainer.innerHTML = `
+                        <table class="stats-table">
+                            <thead>
+                                <tr>
+                                    <th></th>
+                                    <th>Completed</th>
+                                    <th>Feedback</th>
+                                    <th>Errors</th>
+                                    ${hasCost ? '<th>Cost</th>' : ''}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Last 7 days</td>
+                                    <td>${s['7d'].completed}</td>
+                                    <td>${s['7d'].feedback}</td>
+                                    <td>${s['7d'].errors}</td>
+                                    ${hasCost ? `<td>${formatCost(s['7d'].cost)}</td>` : ''}
+                                </tr>
+                                <tr>
+                                    <td>Last 28 days</td>
+                                    <td>${s['28d'].completed}</td>
+                                    <td>${s['28d'].feedback}</td>
+                                    <td>${s['28d'].errors}</td>
+                                    ${hasCost ? `<td>${formatCost(s['28d'].cost)}</td>` : ''}
+                                </tr>
+                                <tr>
+                                    <td>Total</td>
+                                    <td><strong>${s.total.completed}</strong></td>
+                                    <td><strong>${s.total.feedback}</strong></td>
+                                    <td><strong>${s.total.errors}</strong></td>
+                                    ${hasCost ? `<td><strong>${formatCost(s.total.cost)}</strong></td>` : ''}
+                                </tr>
+                            </tbody>
+                        </table>
                     `;
                 }
-
-                grid.innerHTML = statusHTML;
             } catch (error) {
                 console.error('Error loading status:', error);
             }

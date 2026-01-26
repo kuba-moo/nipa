@@ -414,28 +414,135 @@ class AirService:
             self.storage.load_metadata()
             all_reviews = list(self.storage.reviews.values())
 
-        status_counts = {
-            'queued': sum(1 for r in all_reviews if r['status'] == 'queued'),
-            'in-progress': sum(1 for r in all_reviews if r['status'] == 'in-progress'),
-            'done': sum(1 for r in all_reviews if r['status'] == 'done'),
-            'error': sum(1 for r in all_reviews if r['status'] == 'error'),
-        }
+        now = datetime.utcnow()
+        cutoff_24h = now - timedelta(hours=24)
+        cutoff_7d = now - timedelta(days=7)
+        cutoff_28d = now - timedelta(days=28)
 
-        # Calculate total cost across all reviews
-        total_cost = sum(r.get('cost_usd', 0.0) for r in all_reviews)
+        queue_size = sum(1 for r in all_reviews if r['status'] == 'queued')
+        active_count = sum(1 for r in all_reviews if r['status'] == 'in-progress')
+
+        # Find oldest active review start time
+        oldest_active_start = None
+        for r in all_reviews:
+            if r['status'] == 'in-progress' and r.get('start'):
+                try:
+                    start_time = datetime.fromisoformat(r['start'])
+                    if oldest_active_start is None or start_time < oldest_active_start:
+                        oldest_active_start = start_time
+                except (ValueError, TypeError):
+                    pass
+
+        # Calculate stats by time period
+        completed_24h = 0
+        feedback_24h = 0
+        errors_24h = 0
+        completed_7d = 0
+        feedback_7d = 0
+        errors_7d = 0
+        cost_7d = 0.0
+        completed_28d = 0
+        feedback_28d = 0
+        errors_28d = 0
+        cost_28d = 0.0
+        completed_total = 0
+        feedback_total = 0
+        errors_total = 0
+        cost_total = 0.0
+        last_completed_time = None
+
+        for r in all_reviews:
+            # Count totals
+            if r['status'] == 'done':
+                completed_total += 1
+                if r.get('has_feedback'):
+                    feedback_total += 1
+            elif r['status'] == 'error':
+                errors_total += 1
+
+            cost_total += r.get('cost_usd', 0.0)
+
+            # Get end time for time-based stats
+            end_str = r.get('end')
+            if not end_str:
+                continue
+
+            try:
+                end_time = datetime.fromisoformat(end_str)
+            except (ValueError, TypeError):
+                continue
+
+            # Track last completed time
+            if r['status'] in ('done', 'error'):
+                if last_completed_time is None or end_time > last_completed_time:
+                    last_completed_time = end_time
+
+            # Count by time period
+            cost = r.get('cost_usd', 0.0)
+
+            if end_time >= cutoff_24h:
+                if r['status'] == 'done':
+                    completed_24h += 1
+                    if r.get('has_feedback'):
+                        feedback_24h += 1
+                elif r['status'] == 'error':
+                    errors_24h += 1
+
+            if end_time >= cutoff_7d:
+                if r['status'] == 'done':
+                    completed_7d += 1
+                    if r.get('has_feedback'):
+                        feedback_7d += 1
+                elif r['status'] == 'error':
+                    errors_7d += 1
+                cost_7d += cost
+
+            if end_time >= cutoff_28d:
+                if r['status'] == 'done':
+                    completed_28d += 1
+                    if r.get('has_feedback'):
+                        feedback_28d += 1
+                elif r['status'] == 'error':
+                    errors_28d += 1
+                cost_28d += cost
 
         result = {
             'service': 'air',
             'status': 'running',
-            'queue_size': self.queue.size(),
+            'queue_size': queue_size,
+            'active_count': active_count,
             'max_work_trees': self.config.max_work_trees,
             'max_claude_runs': self.config.max_claude_runs,
-            'review_counts': status_counts,
+            'completed_24h': completed_24h,
+            'feedback_24h': feedback_24h,
+            'errors_24h': errors_24h,
+            'stats': {
+                '7d': {
+                    'completed': completed_7d,
+                    'feedback': feedback_7d,
+                    'errors': errors_7d,
+                    'cost': round(cost_7d, 2) if cost_7d > 0 else None,
+                },
+                '28d': {
+                    'completed': completed_28d,
+                    'feedback': feedback_28d,
+                    'errors': errors_28d,
+                    'cost': round(cost_28d, 2) if cost_28d > 0 else None,
+                },
+                'total': {
+                    'completed': completed_total,
+                    'feedback': feedback_total,
+                    'errors': errors_total,
+                    'cost': round(cost_total, 2) if cost_total > 0 else None,
+                },
+            },
         }
 
-        # Include cost only if there is cost data (indicates superuser reviews exist)
-        if total_cost > 0:
-            result['total_cost_usd'] = round(total_cost, 2)
+        if oldest_active_start:
+            result['oldest_active_start'] = oldest_active_start.isoformat()
+
+        if last_completed_time:
+            result['last_completed'] = last_completed_time.isoformat()
 
         return result
 
