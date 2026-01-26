@@ -718,6 +718,15 @@
                     <input type="checkbox" id="feedbackOnlyMode">
                     With feedback only
                 </label>
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 14px;">
+                    Sort by:
+                    <select id="reviewSort" style="padding: 4px 8px;">
+                        <option value="date">Date (newest)</option>
+                        <option value="cost">Cost (highest)</option>
+                        <option value="duration">Duration (longest)</option>
+                        <option value="patches">Patches (most)</option>
+                    </select>
+                </label>
             </div>
             <div id="reviewsList">
                 <div class="loading">Loading reviews...</div>
@@ -951,6 +960,9 @@
             listReviews();
         });
         document.getElementById('feedbackOnlyMode').addEventListener('change', function() {
+            listReviews();
+        });
+        document.getElementById('reviewSort').addEventListener('change', function() {
             listReviews();
         });
         document.getElementById('reviewLimit').addEventListener('change', function() {
@@ -1800,6 +1812,7 @@
             const superuser = document.getElementById('superuserMode').checked;
             const feedbackOnly = document.getElementById('feedbackOnlyMode').checked;
             const limit = document.getElementById('reviewLimit').value;
+            const sortBy = document.getElementById('reviewSort').value;
 
             try {
                 // Show loading
@@ -1818,12 +1831,29 @@
 
                 if (response.ok) {
                     // Use has_feedback from API response
-                    const reviewsWithFeedback = result.reviews.map(review => ({
+                    let reviews = result.reviews.map(review => ({
                         ...review,
                         hasFeedback: review.has_feedback || false
                     }));
 
-                    displayReviewsList(reviewsWithFeedback, token);
+                    // Sort reviews based on selected option
+                    switch (sortBy) {
+                        case 'cost':
+                            reviews.sort((a, b) => (b.cost_usd || 0) - (a.cost_usd || 0));
+                            break;
+                        case 'duration':
+                            reviews.sort((a, b) => (b.duration_seconds || 0) - (a.duration_seconds || 0));
+                            break;
+                        case 'patches':
+                            reviews.sort((a, b) => (b.patch_count || 0) - (a.patch_count || 0));
+                            break;
+                        case 'date':
+                        default:
+                            // Already sorted by date from backend
+                            break;
+                    }
+
+                    displayReviewsList(reviews, token);
                 } else {
                     document.getElementById('reviewsList').innerHTML =
                         `<div class="message error">Error: ${result.error}</div>`;
