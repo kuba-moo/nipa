@@ -598,6 +598,15 @@
                     <input type="checkbox" id="superuserMode">
                     All users
                 </label>
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 14px;">
+                    Limit:
+                    <select id="reviewLimit" style="padding: 4px 8px;">
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                        <option value="200" selected>200</option>
+                        <option value="500">500</option>
+                    </select>
+                </label>
                 <button class="token-minimized" id="tokenMinimized" onclick="showTokenConfig()">
                     🔑 Token Configured
                 </button>
@@ -883,28 +892,30 @@
         // Initialize and update review chart
         let reviewChart = null;
         let averagesChart = null;
-        loadReviewChart();
-        loadAveragesChart();
-        setInterval(loadReviewChart, 30000); // Refresh every 30 seconds
-        setInterval(loadAveragesChart, 30000); // Refresh every 30 seconds
+        loadCharts();
+        setInterval(loadCharts, 30000); // Refresh every 30 seconds
 
         // Refresh chart and review list when filters change
         document.getElementById('superuserMode').addEventListener('change', function() {
-            loadReviewChart();
-            loadAveragesChart();
+            loadCharts();
             listReviews();
         });
         document.getElementById('feedbackOnlyMode').addEventListener('change', function() {
             listReviews();
         });
+        document.getElementById('reviewLimit').addEventListener('change', function() {
+            loadCharts();
+            listReviews();
+        });
 
-        async function loadReviewChart() {
+        async function loadCharts() {
             const token = getToken();
             const superuser = document.getElementById('superuserMode').checked;
+            const limit = document.getElementById('reviewLimit').value;
 
             try {
-                // Fetch review data - get more reviews to build time series
-                let url = `${API_BASE}/reviews?limit=200&filter_user=${superuser ? 'false' : 'true'}`;
+                // Fetch review data once for both charts
+                let url = `${API_BASE}/reviews?limit=${limit}&filter_user=${superuser ? 'false' : 'true'}`;
                 if (token) {
                     url += `&token=${token}`;
                 }
@@ -917,15 +928,24 @@
                     return;
                 }
 
-                console.log(`Fetched ${result.reviews.length} reviews for chart`);
+                console.log(`Fetched ${result.reviews.length} reviews for charts`);
 
-                // Check if any review has cost data (indicates superuser)
-                const hasCostData = result.reviews.some(r => r.cost_usd !== undefined);
+                // Update both charts with the same data
+                updateReviewChart(result.reviews);
+                updateAveragesChart(result.reviews);
+            } catch (error) {
+                console.error('Error loading charts:', error);
+            }
+        }
 
-                // Group reviews by 6-hour time buckets and status
-                const dataByBucket = {};
+        function updateReviewChart(reviews) {
+            // Check if any review has cost data (indicates superuser)
+            const hasCostData = reviews.some(r => r.cost_usd !== undefined);
 
-                result.reviews.forEach(review => {
+            // Group reviews by 6-hour time buckets and status
+            const dataByBucket = {};
+
+            reviews.forEach(review => {
                     // Parse date and round to nearest 6-hour bucket
                     const timestamp = parseUTCDate(review.date);
                     const hours = timestamp.getHours();
@@ -1150,47 +1170,24 @@
                         }
                     });
                 }
-            } catch (error) {
-                console.error('Error loading review chart:', error);
-            }
         }
 
-        async function loadAveragesChart() {
-            const token = getToken();
-            const superuser = document.getElementById('superuserMode').checked;
+        function updateAveragesChart(reviews) {
+            // Check if any review has cost data (indicates superuser)
+            const hasCostData = reviews.some(r => r.cost_usd !== undefined);
 
-            try {
-                // Fetch review data - get more reviews to build time series
-                let url = `${API_BASE}/reviews?limit=200&filter_user=${superuser ? 'false' : 'true'}`;
-                if (token) {
-                    url += `&token=${token}`;
-                }
+            // Use has_feedback from API response
+            const reviewsWithFeedback = reviews.map(review => ({
+                ...review,
+                hasFeedback: review.has_feedback || false
+            }));
 
-                const response = await fetch(url);
-                const result = await response.json();
+            // Group reviews by day and calculate averages, separated by feedback status
+            const dataByDay = {};
 
-                if (!response.ok || !result.reviews) {
-                    console.error('Failed to fetch reviews:', result);
-                    return;
-                }
-
-                console.log(`Fetched ${result.reviews.length} reviews for averages chart`);
-
-                // Check if any review has cost data (indicates superuser)
-                const hasCostData = result.reviews.some(r => r.cost_usd !== undefined);
-
-                // Use has_feedback from API response
-                const reviewsWithFeedback = result.reviews.map(review => ({
-                    ...review,
-                    hasFeedback: review.has_feedback || false
-                }));
-
-                // Group reviews by day and calculate averages, separated by feedback status
-                const dataByDay = {};
-
-                reviewsWithFeedback.forEach(review => {
-                    // Only process completed reviews with timing data
-                    if (review.status !== 'done' || !review.duration_seconds || !review.patch_count || review.patch_count === 0) {
+            reviewsWithFeedback.forEach(review => {
+                // Only process completed reviews with timing data
+                if (review.status !== 'done' || !review.duration_seconds || !review.patch_count || review.patch_count === 0) {
                         return;
                     }
 
@@ -1494,9 +1491,6 @@
                         }
                     });
                 }
-            } catch (error) {
-                console.error('Error loading averages chart:', error);
-            }
         }
 
         // Input type switcher
@@ -1708,14 +1702,18 @@
             const token = getToken();
             const superuser = document.getElementById('superuserMode').checked;
             const feedbackOnly = document.getElementById('feedbackOnlyMode').checked;
+            const limit = document.getElementById('reviewLimit').value;
 
             try {
                 // Show loading
                 document.getElementById('reviewsList').innerHTML = '<p class="small">Loading reviews...</p>';
 
-                let url = `${API_BASE}/reviews?limit=50&filter_user=${superuser ? 'false' : 'true'}`;
+                let url = `${API_BASE}/reviews?limit=${limit}&filter_user=${superuser ? 'false' : 'true'}`;
                 if (token) {
                     url += `&token=${token}`;
+                }
+                if (feedbackOnly) {
+                    url += '&has_feedback=true';
                 }
 
                 const response = await fetch(url);
@@ -1728,12 +1726,7 @@
                         hasFeedback: review.has_feedback || false
                     }));
 
-                    // Filter if needed
-                    const filteredReviews = feedbackOnly
-                        ? reviewsWithFeedback.filter(r => r.hasFeedback)
-                        : reviewsWithFeedback;
-
-                    displayReviewsList(filteredReviews, token);
+                    displayReviewsList(reviewsWithFeedback, token);
                 } else {
                     document.getElementById('reviewsList').innerHTML =
                         `<div class="message error">Error: ${result.error}</div>`;
@@ -1921,8 +1914,8 @@
                             <div class="review-header">
                                 <span class="review-id">${review.review_id}</span>
                                 <div style="display: flex; gap: 8px; align-items: center;">
-                                    ${feedbackBadge}
                                     ${adminFeedbackBadge}
+                                    ${feedbackBadge}
                                     <span class="status-badge status-${review.status}">${review.status}</span>
                                 </div>
                             </div>

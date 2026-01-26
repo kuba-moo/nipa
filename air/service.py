@@ -284,7 +284,8 @@ class AirService:
         # Return full review data using existing method (handles authorization)
         return self.get_review(review_id, token, fmt)
 
-    def list_reviews(self, token: Optional[str] = None, limit: int = 50, filter_user: bool = True) -> List[Dict]:
+    def list_reviews(self, token: Optional[str] = None, limit: int = 50,
+                     filter_user: bool = True, has_feedback: Optional[bool] = None) -> List[Dict]:
         """List recent reviews
 
         Args:
@@ -295,6 +296,9 @@ class AirService:
                           - Superuser token: all reviews
                           - Regular token: user's reviews + public reviews
                           - No token: public reviews only
+            has_feedback: If True, only return reviews with feedback.
+                         If False, only return reviews without feedback.
+                         If None, return all reviews regardless of feedback.
 
         Returns:
             List of review summaries
@@ -331,6 +335,10 @@ class AirService:
                               if self.token_auth.is_public_read(r.get('token', ''))]
                 else:
                     reviews = []
+
+        # Filter by has_feedback if specified
+        if has_feedback is not None:
+            reviews = [r for r in reviews if r.get('has_feedback', False) == has_feedback]
 
         # Return simplified view with additional fields
         result = []

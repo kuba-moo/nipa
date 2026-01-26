@@ -150,9 +150,14 @@ def create_app(config_path=None, skip_semcode=False, keep_temp_trees=False):
         limit = request.args.get('limit', 50, type=int)
         filter_user_param = request.args.get('filter_user', 'true').lower()
         filter_user = filter_user_param in ('true', '1', 'yes')
+        has_feedback_param = request.args.get('has_feedback')
+        has_feedback = None
+        if has_feedback_param is not None:
+            has_feedback = has_feedback_param.lower() in ('true', '1', 'yes')
 
         try:
-            reviews = service.list_reviews(token, limit, filter_user=filter_user)
+            reviews = service.list_reviews(token, limit, filter_user=filter_user,
+                                           has_feedback=has_feedback)
             return jsonify({'reviews': reviews}), 200
         except Exception as e:
             print(f"Error listing reviews: {e}")
