@@ -1179,27 +1179,10 @@
                 // Check if any review has cost data (indicates superuser)
                 const hasCostData = result.reviews.some(r => r.cost_usd !== undefined);
 
-                // Fetch full details for done reviews to check for feedback
-                const reviewsWithFeedback = await Promise.all(result.reviews.map(async (review) => {
-                    if (review.status === 'done') {
-                        try {
-                            let detailUrl = `${API_BASE}/review?id=${review.review_id}&format=inline`;
-                            if (token) {
-                                detailUrl += `&token=${token}`;
-                            }
-                            const detailResponse = await fetch(detailUrl);
-                            const detailData = await detailResponse.json();
-
-                            // Check if any patch has feedback
-                            if (detailData.review && Array.isArray(detailData.review)) {
-                                const hasFeedback = detailData.review.some(r => r !== null && r.trim() !== '');
-                                return { ...review, hasFeedback };
-                            }
-                        } catch (err) {
-                            console.error(`Error fetching details for review ${review.review_id}:`, err);
-                        }
-                    }
-                    return { ...review, hasFeedback: false };
+                // Use has_feedback from API response
+                const reviewsWithFeedback = result.reviews.map(review => ({
+                    ...review,
+                    hasFeedback: review.has_feedback || false
                 }));
 
                 // Group reviews by day and calculate averages, separated by feedback status
@@ -1739,25 +1722,10 @@
                 const result = await response.json();
 
                 if (response.ok) {
-                    // Fetch full details for done reviews to check for feedback
-                    const reviewsWithFeedback = await Promise.all(result.reviews.map(async (review) => {
-                        if (review.status === 'done') {
-                            try {
-                                let detailUrl = `${API_BASE}/review?id=${review.review_id}&format=inline`;
-                                if (token) {
-                                    detailUrl += `&token=${token}`;
-                                }
-                                const detailResponse = await fetch(detailUrl);
-                                const detailData = await detailResponse.json();
-
-                                // Check if any patch has feedback
-                                const hasFeedback = detailData.review && detailData.review.some(r => r && r.trim());
-                                return { ...review, hasFeedback };
-                            } catch (e) {
-                                return { ...review, hasFeedback: false };
-                            }
-                        }
-                        return { ...review, hasFeedback: false };
+                    // Use has_feedback from API response
+                    const reviewsWithFeedback = result.reviews.map(review => ({
+                        ...review,
+                        hasFeedback: review.has_feedback || false
                     }));
 
                     // Filter if needed

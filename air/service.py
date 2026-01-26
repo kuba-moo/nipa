@@ -355,6 +355,10 @@ class AirService:
             if r.get('model'):
                 review_info['model'] = r['model']
 
+            # Add has_feedback flag
+            if 'has_feedback' in r:
+                review_info['has_feedback'] = r['has_feedback']
+
             # Add cost (only for superusers)
             if is_requesting_superuser and r.get('cost_usd'):
                 review_info['cost_usd'] = r['cost_usd']
