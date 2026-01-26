@@ -256,6 +256,16 @@ class LLMWorker:
                 except Exception as e:
                     log_thread(f"Warning: Failed to copy review-inline.txt: {e}")
 
+            # Copy review-metadata.json from work tree if it was created by Claude
+            metadata_src = os.path.join(work_path, 'review-metadata.json')
+            if os.path.exists(metadata_src):
+                metadata_dst = os.path.join(patch_dir, 'review-metadata.json')
+                try:
+                    shutil.copy(metadata_src, metadata_dst)
+                    log_thread(f"Copied review-metadata.json for {review_id} patch {patch_num}")
+                except Exception as e:
+                    log_thread(f"Warning: Failed to copy review-metadata.json: {e}")
+
             # Convert JSON to markdown format
             try:
                 convert_json_to_markdown(review_json_path, review_md_path)
