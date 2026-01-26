@@ -367,7 +367,7 @@ class ReviewStorage:
             token: Authentication token
             review_id: Review ID
             patch_num: Patch number (1-based)
-            fmt: Format (json, markup, inline)
+            fmt: Format (json, markup, inline, metadata)
 
         Returns:
             File content or None
@@ -378,7 +378,8 @@ class ReviewStorage:
         filename_map = {
             'json': 'review.json',
             'markup': 'review.md',
-            'inline': 'review-inline.txt'
+            'inline': 'review-inline.txt',
+            'metadata': 'review-metadata.json'
         }
 
         filename = filename_map.get(fmt)

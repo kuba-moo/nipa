@@ -158,7 +158,7 @@ class AirService:
         Args:
             review_id: Review ID
             token: Authentication token (optional for public_read reviews)
-            fmt: Optional format (json, markup, inline)
+            fmt: Optional format (json, markup, inline, metadata)
 
         Returns:
             Review result dictionary or None if not found/unauthorized
@@ -271,7 +271,7 @@ class AirService:
         Args:
             patchwork_series_id: Patchwork series ID
             token: Authentication token (optional for public_read reviews)
-            fmt: Optional format (json, markup, inline)
+            fmt: Optional format (json, markup, inline, metadata)
 
         Returns:
             Review result dictionary or None if not found/unauthorized
