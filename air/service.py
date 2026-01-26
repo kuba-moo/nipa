@@ -441,20 +441,24 @@ class AirService:
         feedback_7d = 0
         errors_7d = 0
         cost_7d = 0.0
+        patches_7d = 0
         completed_28d = 0
         feedback_28d = 0
         errors_28d = 0
         cost_28d = 0.0
+        patches_28d = 0
         completed_total = 0
         feedback_total = 0
         errors_total = 0
         cost_total = 0.0
+        patches_total = 0
         last_completed_time = None
 
         for r in all_reviews:
             # Count totals
             if r['status'] == 'done':
                 completed_total += 1
+                patches_total += r.get('patch_count', 0)
                 if r.get('has_feedback'):
                     feedback_total += 1
             elif r['status'] == 'error':
@@ -491,6 +495,7 @@ class AirService:
             if end_time >= cutoff_7d:
                 if r['status'] == 'done':
                     completed_7d += 1
+                    patches_7d += r.get('patch_count', 0)
                     if r.get('has_feedback'):
                         feedback_7d += 1
                 elif r['status'] == 'error':
@@ -500,6 +505,7 @@ class AirService:
             if end_time >= cutoff_28d:
                 if r['status'] == 'done':
                     completed_28d += 1
+                    patches_28d += r.get('patch_count', 0)
                     if r.get('has_feedback'):
                         feedback_28d += 1
                 elif r['status'] == 'error':
@@ -519,18 +525,21 @@ class AirService:
             'stats': {
                 '7d': {
                     'completed': completed_7d,
+                    'patches': patches_7d,
                     'feedback': feedback_7d,
                     'errors': errors_7d,
                     'cost': round(cost_7d, 2) if cost_7d > 0 else None,
                 },
                 '28d': {
                     'completed': completed_28d,
+                    'patches': patches_28d,
                     'feedback': feedback_28d,
                     'errors': errors_28d,
                     'cost': round(cost_28d, 2) if cost_28d > 0 else None,
                 },
                 'total': {
                     'completed': completed_total,
+                    'patches': patches_total,
                     'feedback': feedback_total,
                     'errors': errors_total,
                     'cost': round(cost_total, 2) if cost_total > 0 else None,

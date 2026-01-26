@@ -698,15 +698,16 @@
                         <tr>
                             <th></th>
                             <th>Completed</th>
+                            <th>Patches</th>
                             <th>Feedback</th>
                             <th>Errors</th>
                             <th>Cost</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr><td>Last 7 days</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
-                        <tr><td>Last 28 days</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
-                        <tr><td>Total</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
+                        <tr><td>Last 7 days</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
+                        <tr><td>Last 28 days</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
+                        <tr><td>Total</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -1672,6 +1673,7 @@
                                 <tr>
                                     <th></th>
                                     <th>Completed</th>
+                                    <th>Patches</th>
                                     <th>Feedback</th>
                                     <th>Errors</th>
                                     ${hasCost ? '<th>Cost</th>' : ''}
@@ -1681,6 +1683,7 @@
                                 <tr>
                                     <td>Last 7 days</td>
                                     <td>${s['7d'].completed}</td>
+                                    <td>${s['7d'].patches}</td>
                                     <td>${s['7d'].feedback}</td>
                                     <td>${s['7d'].errors}</td>
                                     ${hasCost ? `<td>${formatCost(s['7d'].cost)}</td>` : ''}
@@ -1688,6 +1691,7 @@
                                 <tr>
                                     <td>Last 28 days</td>
                                     <td>${s['28d'].completed}</td>
+                                    <td>${s['28d'].patches}</td>
                                     <td>${s['28d'].feedback}</td>
                                     <td>${s['28d'].errors}</td>
                                     ${hasCost ? `<td>${formatCost(s['28d'].cost)}</td>` : ''}
@@ -1695,6 +1699,7 @@
                                 <tr>
                                     <td>Total</td>
                                     <td><strong>${s.total.completed}</strong></td>
+                                    <td><strong>${s.total.patches}</strong></td>
                                     <td><strong>${s.total.feedback}</strong></td>
                                     <td><strong>${s.total.errors}</strong></td>
                                     ${hasCost ? `<td><strong>${formatCost(s.total.cost)}</strong></td>` : ''}
