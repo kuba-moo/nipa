@@ -200,6 +200,17 @@ class LLMWorker:
             f.write(f"Prompt: {full_prompt_path}\n")
             f.write(f"Model: {model}\n")
             f.write(f"Git range: {git_range}\n")
+
+            # Get commit reference
+            try:
+                result = subprocess.run(
+                    ['git', 'show', '-s', '--format=reference'],
+                    cwd=work_path, capture_output=True, text=True, check=True
+                )
+                f.write(f"Commit: {result.stdout.strip()}\n")
+            except subprocess.CalledProcessError:
+                pass
+
             f.write("\nCommand:\n")
             # Use shlex to properly quote arguments for shell safety
             import shlex
