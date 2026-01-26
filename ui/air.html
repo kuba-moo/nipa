@@ -324,27 +324,36 @@
         }
 
         .status-grid {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            padding: 15px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .status-card {
             background: var(--bg-card);
+            padding: 12px 20px;
             border-radius: 4px;
-            font-size: 14px;
-            color: var(--text-secondary);
+            text-align: center;
         }
 
-        .status-item {
-            color: var(--text-secondary);
+        .status-card .label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            margin-bottom: 4px;
         }
 
-        .status-item strong {
+        .status-card .value {
+            font-size: 24px;
+            font-weight: bold;
             color: var(--heading-color);
         }
 
-        .status-separator {
+        .status-card .sub-value {
+            font-size: 12px;
             color: var(--text-muted);
+            margin-top: 2px;
         }
 
         .stats-table-container {
@@ -1598,37 +1607,56 @@
                     return `${Math.floor(diffHours / 24)}d ago`;
                 }
 
-                // Build active status text
-                let activeText = `Active: ${data.active_count}`;
+                // Build active sub-value
+                let activeSub = '';
                 if (data.active_count > 0 && data.oldest_active_start) {
-                    activeText += ` (started ${formatRelativeTime(data.oldest_active_start)})`;
+                    activeSub = `started ${formatRelativeTime(data.oldest_active_start)}`;
                 }
 
-                // Build 24h stats text
-                let stats24h = `Last 24h: ${data.completed_24h} completed`;
-                if (data.feedback_24h > 0) {
-                    stats24h += `, ${data.feedback_24h} feedback`;
-                }
-                if (data.errors_24h > 0) {
-                    stats24h += `, ${data.errors_24h} errors`;
-                }
+                // Build last completed text
+                let lastCompletedText = '';
                 if (data.last_completed) {
-                    stats24h += ` (last ${formatRelativeTime(data.last_completed)})`;
+                    lastCompletedText = `last ${formatRelativeTime(data.last_completed)}`;
                 }
 
-                // Single-line compact display
-                grid.style.display = 'flex';
-                grid.style.alignItems = 'center';
-                grid.style.justifyContent = 'center';
-                grid.style.gap = '8px';
-                grid.style.flexWrap = 'wrap';
+                // Build recent card content
+                let recentContent = '';
+                if (activeSub && lastCompletedText) {
+                    recentContent = `${activeSub}<br>${lastCompletedText}`;
+                } else if (activeSub) {
+                    recentContent = activeSub;
+                } else if (lastCompletedText) {
+                    recentContent = lastCompletedText;
+                } else {
+                    recentContent = '-';
+                }
 
+                // Uniform card display
                 grid.innerHTML = `
-                    <span class="status-item">Queue: <strong>${data.queue_size}</strong></span>
-                    <span class="status-separator">|</span>
-                    <span class="status-item">${activeText}</span>
-                    <span class="status-separator">|</span>
-                    <span class="status-item">${stats24h}</span>
+                    <div class="status-card">
+                        <div class="label">Queue</div>
+                        <div class="value">${data.queue_size}</div>
+                    </div>
+                    <div class="status-card">
+                        <div class="label">Active</div>
+                        <div class="value">${data.active_count}</div>
+                    </div>
+                    <div class="status-card">
+                        <div class="label">24h Completed</div>
+                        <div class="value">${data.completed_24h}</div>
+                    </div>
+                    <div class="status-card">
+                        <div class="label">24h Errors</div>
+                        <div class="value">${data.errors_24h}</div>
+                    </div>
+                    <div class="status-card">
+                        <div class="label">24h Feedback</div>
+                        <div class="value">${data.feedback_24h}</div>
+                    </div>
+                    <div class="status-card">
+                        <div class="label">Recent</div>
+                        <div class="sub-value" style="margin-top: 8px;">${recentContent}</div>
+                    </div>
                 `;
 
                 // Update stats table in Review History tab
