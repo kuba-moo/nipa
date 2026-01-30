@@ -150,6 +150,7 @@ class LLMWorker:
         # Get model from metadata (already normalized to config default in submit_review)
         metadata = self.storage.get_review_metadata(review_id)
         model = metadata.get('model', self.config.claude_model)
+        llm_mode = metadata.get('llm_mode', 'classic')
 
         # Copy the entire review prompt directory to the work tree
         # Strip trailing slash to ensure basename works correctly
@@ -167,20 +168,60 @@ class LLMWorker:
         # Copy the entire directory
         shutil.copytree(prompt_dir, work_prompt_dir)
 
-        # Construct the path to the prompt file relative to work_path
-        prompt_path = os.path.join(prompt_dir_basename, self.config.review_prompt_file)
+        # Handle llm_mode-specific setup
+        if llm_mode == 'orc':
+            # Run create_changes.py script before invoking Claude
+            script_path = os.path.join(work_prompt_dir, self.config.create_changes_script)
+            log_thread(f"Running create_changes.py for commit {commit_hash}")
 
-        # Verify the prompt file exists
+            try:
+                result = subprocess.run([script_path, commit_hash],
+                                       cwd=work_path, capture_output=True, text=True, timeout=120)
+                if result.returncode != 0:
+                    log_thread(f"create_changes.py failed: {result.stderr}")
+                    # Save error info for debugging
+                    error_path = os.path.join(patch_dir, f'create-changes-error-attempt{attempt}.txt')
+                    with open(error_path, 'w') as f:
+                        f.write(f"create_changes.py failed with exit code {result.returncode}\n")
+                        f.write(f"stdout:\n{result.stdout}\n")
+                        f.write(f"stderr:\n{result.stderr}\n")
+                    return False
+            except subprocess.TimeoutExpired:
+                log_thread("create_changes.py timed out")
+                error_path = os.path.join(patch_dir, f'create-changes-error-attempt{attempt}.txt')
+                with open(error_path, 'w') as f:
+                    f.write("create_changes.py timed out after 120 seconds\n")
+                return False
+            except Exception as e:
+                log_thread(f"create_changes.py error: {e}")
+                error_path = os.path.join(patch_dir, f'create-changes-error-attempt{attempt}.txt')
+                with open(error_path, 'w') as f:
+                    f.write(f"create_changes.py error: {e}\n")
+                return False
+
+            # Use orc prompt file
+            prompt_path = os.path.join(prompt_dir_basename, self.config.orc_prompt_file)
+        else:
+            # Classic mode - use existing prompt_file
+            prompt_path = os.path.join(prompt_dir_basename, self.config.review_prompt_file)
+
+        # Construct the path to the prompt file relative to work_path
         full_prompt_path = os.path.join(work_path, prompt_path)
         if not os.path.exists(full_prompt_path):
             log_thread_debug("WARNING", f"  Prompt NOT found: {full_prompt_path}")
 
-        prompt_msg = f"""
-        Current directory is the root of a Linux Kernel git repository.
-        Read the prompt from {full_prompt_path}.
-        Using the prompt, do a deep dive regression analysis of the {commit_hash} commit.
-        Use commit range {git_range} for the false-positive-guide.md section.
-        """
+        if llm_mode == 'orc':
+            prompt_msg = f"""
+            Current directory is the root of a Linux Kernel git repository.
+            Read the prompt from {full_prompt_path} and run it on the {commit_hash} commit.
+            """
+        else:
+            prompt_msg = f"""
+            Current directory is the root of a Linux Kernel git repository.
+            Read the prompt from {full_prompt_path}.
+            Using the prompt, do a deep dive regression analysis of the {commit_hash} commit.
+            Use commit range {git_range} for the false-positive-guide.md section.
+            """
 
         # Build Claude command
         cmd = [
@@ -199,6 +240,7 @@ class LLMWorker:
             f.write(f"Claude cwd: {work_path}\n")
             f.write(f"Prompt: {full_prompt_path}\n")
             f.write(f"Model: {model}\n")
+            f.write(f"LLM mode: {llm_mode}\n")
             f.write(f"Git range: {git_range}\n")
 
             # Get commit reference

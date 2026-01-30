@@ -37,6 +37,9 @@ class AirConfig:
         # Review configuration
         self.review_prompt_dir = config.get('review', 'prompt_dir')
         self.review_prompt_file = config.get('review', 'prompt_file')
+        self.orc_prompt_file = config.get('review', 'orc_prompt_file', fallback='agent/orc.md')
+        self.create_changes_script = config.get('review', 'create_changes_script',
+                                                 fallback='scripts/create_changes.py')
 
         # Claude configuration
         self.claude_model = config.get('claude', 'model', fallback='sonnet')

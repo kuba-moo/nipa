@@ -110,6 +110,14 @@ class AirService:
         if 'model' not in data or not data['model']:
             data['model'] = self.config.claude_model
 
+        # Normalize and validate llm_mode: default to 'classic'
+        llm_mode = data.get('llm_mode', 'classic')
+        if not llm_mode:
+            llm_mode = 'classic'
+        if llm_mode not in ('classic', 'orc'):
+            raise ValueError(f"Invalid llm_mode: {llm_mode}. Must be 'classic' or 'orc'")
+        data['llm_mode'] = llm_mode
+
         print(f"[submit_review] Creating review entry for tree: {data['tree']}")
         # Create review entry
         review_id = self.storage.create_review(token, data)

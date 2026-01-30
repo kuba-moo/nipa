@@ -76,6 +76,7 @@ class ReviewStorage:
                 'tree': request_data.get('tree'),
                 'branch': request_data.get('branch'),
                 'model': request_data.get('model'),  # Requested model (optional)
+                'llm_mode': request_data.get('llm_mode'),  # LLM mode (classic or orc)
                 'message': None,
                 'patch_count': 0,  # Will be updated when patches are processed
             }
