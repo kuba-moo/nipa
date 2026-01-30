@@ -2059,6 +2059,11 @@
                     ? `<span style="color: var(--text-muted); font-size: 11px;">⏱️ ${formatDuration(review.duration_seconds)}</span>`
                     : '';
 
+                // LLM mode (only show if not classic/default)
+                const llmMode = review.llm_mode && review.llm_mode !== 'classic'
+                    ? `<span style="color: var(--text-muted); font-size: 11px;">${review.llm_mode}</span>`
+                    : '';
+
                 // Private badge (only show for private reviews)
                 const visibilityBadge = review.is_public
                     ? ''
@@ -2082,6 +2087,7 @@
                                 <div class="review-meta">
                                     <span class="submission-type">${submissionType}</span>
                                     ${tokenOwner ? `<span class="token-owner">${tokenOwner}</span>` : ''}
+                                    ${llmMode}
                                     ${duration}
                                     ${cost}
                                 </div>

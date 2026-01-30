@@ -235,6 +235,9 @@ class AirService:
         if metadata.get('model'):
             result['model'] = metadata['model']
 
+        if metadata.get('llm_mode'):
+            result['llm_mode'] = metadata['llm_mode']
+
         # Add message if exists
         message = self.storage.read_message(metadata['token'], review_id)
         if message or metadata.get('message'):
@@ -370,6 +373,10 @@ class AirService:
             # Add model if present
             if r.get('model'):
                 review_info['model'] = r['model']
+
+            # Add llm_mode if present
+            if r.get('llm_mode'):
+                review_info['llm_mode'] = r['llm_mode']
 
             # Add has_feedback flag
             if 'has_feedback' in r:
