@@ -3,14 +3,38 @@
 """LLM worker for running Claude reviews"""
 
 import os
+import shlex
 import shutil
 import subprocess
 import time
-from typing import Dict
+import traceback
+from dataclasses import dataclass
+from typing import Dict, List
 
 from core import log_init
 from .log_helper import log_thread, log_thread_debug
 from .claude_json import convert_json_to_markdown
+
+
+@dataclass
+class ReviewContext:
+    """Context for a single review attempt"""
+    work_path: str
+    patch_dir: str
+    review_id: str
+    patch_num: int
+    commit_hash: str
+    git_range: str
+    attempt: int
+    model: str
+    llm_mode: str
+
+    # Computed paths
+    work_prompt_dir: str = ""
+    prompt_path: str = ""
+    full_prompt_path: str = ""
+    review_json_path: str = ""
+    review_md_path: str = ""
 
 
 class LLMWorker:
@@ -35,13 +59,10 @@ class LLMWorker:
             worker_id: Worker ID number
             temp_copy_queue: TempCopyQueue to get temp copies from
         """
-        # Initialize logging for this thread
         log_init("stdout", "")
-
         log_thread(f"LLM worker {worker_id} started")
 
         while True:
-            # Get next temp copy
             temp_copy_info = temp_copy_queue.get(timeout=1)
             if temp_copy_info is None:
                 continue
@@ -51,295 +72,329 @@ class LLMWorker:
             log_thread(f"LLM worker {worker_id} processing review {review_id} patch {patch_num}")
 
             try:
-                self.process_temp_copy(temp_copy_info)
+                self._process_temp_copy(temp_copy_info)
             except Exception as e:
                 log_thread(f"Error in LLM worker {worker_id} processing {review_id} patch {patch_num}: {e}")
-                import traceback
                 traceback.print_exc()
             finally:
-                # Always clean up the temp copy
                 temp_path = temp_copy_info['temp_path']
                 if not self.config.keep_temp_trees:
                     self.worktree_mgr.remove_temp_copy(temp_path)
                 else:
                     log_thread(f"Keeping temp work tree: {temp_path} (--dev-keep-temp-trees)")
-
-                # Mark task as done
                 temp_copy_queue.task_done()
 
-    def process_temp_copy(self, temp_copy_info: Dict):
-        """Process a temp copy (run Claude review)
-
-        Args:
-            temp_copy_info: Dict with temp_path, token, review_id, patch_num, commit_hash, git_range
-        """
+    def _process_temp_copy(self, temp_copy_info: Dict):
+        """Process a temp copy (run Claude review with retries)"""
         temp_path = temp_copy_info['temp_path']
         token = temp_copy_info['token']
         review_id = temp_copy_info['review_id']
         patch_num = temp_copy_info['patch_num']
         commit_hash = temp_copy_info['commit_hash']
-        git_range = temp_copy_info.get('git_range', f"{commit_hash}^..{commit_hash}")  # Fallback for old data
+        git_range = temp_copy_info.get('git_range', f"{commit_hash}^..{commit_hash}")
 
-        # Run Claude review with retries
+        # Get metadata for model and llm_mode
+        metadata = self.storage.get_review_metadata(review_id)
+        model = metadata.get('model', self.config.claude_model)
+        llm_mode = metadata.get('llm_mode', 'classic')
+        patch_dir = self.storage.get_patch_dir(token, review_id, patch_num)
+
+        # Build context
+        ctx = ReviewContext(
+            work_path=temp_path,
+            patch_dir=patch_dir,
+            review_id=review_id,
+            patch_num=patch_num,
+            commit_hash=commit_hash,
+            git_range=git_range,
+            attempt=0,
+            model=model,
+            llm_mode=llm_mode,
+        )
+
+        # Run with retries
         success = False
-        for attempt in range(self.config.claude_retries):
-            log_thread(f"Review attempt {attempt + 1} for commit {commit_hash[:8]}")
+        for attempt in range(1, self.config.claude_retries + 1):
+            ctx.attempt = attempt
+            log_thread(f"Review attempt {attempt} for commit {commit_hash[:8]}")
 
-            success = self._run_claude_review(temp_path, token, review_id, patch_num, commit_hash, git_range, attempt + 1)
+            success = self._run_review(ctx)
             if success:
                 log_thread(f"Successfully reviewed patch {patch_num} for {review_id}")
                 break
 
-            log_thread(f"Review attempt {attempt + 1} failed for {commit_hash[:8]}")
+            log_thread(f"Review attempt {attempt} failed for {commit_hash[:8]}")
 
-        # Mark patch as complete (success or failure)
         if not success:
             log_thread(f"Review failed after {self.config.claude_retries} attempts for {commit_hash[:8]}")
 
-        # Mark this patch as complete and check if all patches are done
         self.storage.mark_patch_complete(review_id, patch_num, success)
 
-    def _save_partial_output(self, patch_dir: str, review_json_path: str, attempt: int):
-        """Save partial review output if available
-
-        Args:
-            patch_dir: Directory for patch results
-            review_json_path: Path to review.json file
-            attempt: Attempt number
-        """
-        # Check if review.json has any content (partial output)
-        if not os.path.exists(review_json_path) or os.path.getsize(review_json_path) == 0:
-            return
-
-        # Save partial output with attempt number
-        partial_json_path = os.path.join(patch_dir, f'review-partial-attempt{attempt}.json')
-        try:
-            shutil.copy(review_json_path, partial_json_path)
-            log_thread(f"Partial output saved to {partial_json_path}")
-        except Exception:
-            pass
-
-        # Try to convert partial JSON to other formats (best effort)
-        try:
-            partial_md_path = os.path.join(patch_dir, f'review-partial-attempt{attempt}.md')
-            convert_json_to_markdown(review_json_path, partial_md_path)
-        except Exception:
-            pass  # Ignore errors in format conversion
-
-    def _run_claude_review(self, work_path: str, token: str, review_id: str,
-                          patch_num: int, commit_hash: str, git_range: str, attempt: int = 1) -> bool:
-        """Run Claude review on a commit
-
-        Args:
-            work_path: Path to work tree (temp copy)
-            token: Auth token
-            review_id: Review ID
-            patch_num: Patch number (1-based)
-            commit_hash: Commit hash being reviewed
-            git_range: Git range for the entire review (e.g., "base..head")
-            attempt: Attempt number (1-based, default 1)
+    def _run_review(self, ctx: ReviewContext) -> bool:
+        """Run a single review attempt
 
         Returns:
             True if successful, False otherwise
         """
-        patch_dir = self.storage.get_patch_dir(token, review_id, patch_num)
+        os.makedirs(ctx.patch_dir, exist_ok=True)
 
-        # Create patch directory if it doesn't exist
-        os.makedirs(patch_dir, exist_ok=True)
+        # Prepare prompt directory
+        if not self._prepare_prompt_directory(ctx):
+            return False
 
-        # Get model from metadata (already normalized to config default in submit_review)
-        metadata = self.storage.get_review_metadata(review_id)
-        model = metadata.get('model', self.config.claude_model)
-        llm_mode = metadata.get('llm_mode', 'classic')
+        # Run mode-specific setup (e.g., create_changes.py for orc mode)
+        if not self._run_mode_setup(ctx):
+            return False
 
-        # Copy the entire review prompt directory to the work tree
-        # Strip trailing slash to ensure basename works correctly
+        # Build and execute Claude command
+        cmd = self._build_claude_command(ctx)
+        self._write_command_info(ctx, cmd)
+
+        return self._execute_claude(ctx, cmd)
+
+    def _prepare_prompt_directory(self, ctx: ReviewContext) -> bool:
+        """Copy prompt directory to work tree and set up paths"""
         prompt_dir = self.config.review_prompt_dir.rstrip('/')
         prompt_dir_basename = os.path.basename(prompt_dir)
-        work_prompt_dir = os.path.join(work_path, prompt_dir_basename)
+        ctx.work_prompt_dir = os.path.join(ctx.work_path, prompt_dir_basename)
 
-        log_thread(f"Copying prompt directory to {work_prompt_dir}")
+        log_thread(f"Copying prompt directory to {ctx.work_prompt_dir}")
 
-        # Remove if it already exists (from a previous attempt)
-        if os.path.exists(work_prompt_dir):
-            log_thread(f"  Removing existing: {work_prompt_dir}")
-            shutil.rmtree(work_prompt_dir)
+        # Remove if it exists (from a previous attempt)
+        if os.path.exists(ctx.work_prompt_dir):
+            log_thread(f"  Removing existing: {ctx.work_prompt_dir}")
+            shutil.rmtree(ctx.work_prompt_dir)
 
-        # Copy the entire directory
-        shutil.copytree(prompt_dir, work_prompt_dir)
+        try:
+            shutil.copytree(prompt_dir, ctx.work_prompt_dir)
+        except Exception as e:
+            log_thread(f"Failed to copy prompt directory: {e}")
+            self._save_error(ctx, f"Failed to copy prompt directory: {e}")
+            return False
 
-        # Handle llm_mode-specific setup
-        if llm_mode == 'orc':
-            # Run create_changes.py script before invoking Claude
-            script_path = os.path.join(work_prompt_dir, self.config.create_changes_script)
-            log_thread(f"Running create_changes.py for commit {commit_hash}")
-
-            try:
-                result = subprocess.run([script_path, commit_hash],
-                                       cwd=work_path, capture_output=True, text=True, timeout=120)
-                if result.returncode != 0:
-                    log_thread(f"create_changes.py failed: {result.stderr}")
-                    # Save error info for debugging
-                    error_path = os.path.join(patch_dir, f'create-changes-error-attempt{attempt}.txt')
-                    with open(error_path, 'w') as f:
-                        f.write(f"create_changes.py failed with exit code {result.returncode}\n")
-                        f.write(f"stdout:\n{result.stdout}\n")
-                        f.write(f"stderr:\n{result.stderr}\n")
-                    return False
-            except subprocess.TimeoutExpired:
-                log_thread("create_changes.py timed out")
-                error_path = os.path.join(patch_dir, f'create-changes-error-attempt{attempt}.txt')
-                with open(error_path, 'w') as f:
-                    f.write("create_changes.py timed out after 120 seconds\n")
-                return False
-            except Exception as e:
-                log_thread(f"create_changes.py error: {e}")
-                error_path = os.path.join(patch_dir, f'create-changes-error-attempt{attempt}.txt')
-                with open(error_path, 'w') as f:
-                    f.write(f"create_changes.py error: {e}\n")
-                return False
-
-            # Use orc prompt file
-            prompt_path = os.path.join(prompt_dir_basename, self.config.orc_prompt_file)
+        # Set prompt path based on mode
+        if ctx.llm_mode == 'orc':
+            ctx.prompt_path = os.path.join(prompt_dir_basename, self.config.orc_prompt_file)
         else:
-            # Classic mode - use existing prompt_file
-            prompt_path = os.path.join(prompt_dir_basename, self.config.review_prompt_file)
+            ctx.prompt_path = os.path.join(prompt_dir_basename, self.config.review_prompt_file)
 
-        # Construct the path to the prompt file relative to work_path
-        full_prompt_path = os.path.join(work_path, prompt_path)
-        if not os.path.exists(full_prompt_path):
-            log_thread_debug("WARNING", f"  Prompt NOT found: {full_prompt_path}")
+        ctx.full_prompt_path = os.path.join(ctx.work_path, ctx.prompt_path)
+        ctx.review_json_path = os.path.join(ctx.patch_dir, 'review.json')
+        ctx.review_md_path = os.path.join(ctx.patch_dir, 'review.md')
 
-        if llm_mode == 'orc':
-            prompt_msg = f"""
+        if not os.path.exists(ctx.full_prompt_path):
+            log_thread_debug("WARNING", f"  Prompt NOT found: {ctx.full_prompt_path}")
+
+        return True
+
+    def _run_mode_setup(self, ctx: ReviewContext) -> bool:
+        """Run mode-specific setup (e.g., create_changes.py for orc mode)"""
+        if ctx.llm_mode != 'orc':
+            return True
+
+        script_path = os.path.join(ctx.work_prompt_dir, self.config.create_changes_script)
+        log_thread(f"Running create_changes.py for commit {ctx.commit_hash}")
+
+        try:
+            result = subprocess.run(
+                [script_path, ctx.commit_hash],
+                cwd=ctx.work_path,
+                capture_output=True,
+                text=True,
+                timeout=120
+            )
+            if result.returncode != 0:
+                log_thread(f"create_changes.py failed: {result.stderr}")
+                self._save_error(
+                    ctx,
+                    f"create_changes.py failed with exit code {result.returncode}\n"
+                    f"stdout:\n{result.stdout}\n"
+                    f"stderr:\n{result.stderr}\n",
+                    prefix="create-changes-error"
+                )
+                return False
+            return True
+
+        except subprocess.TimeoutExpired:
+            log_thread("create_changes.py timed out")
+            self._save_error(ctx, "create_changes.py timed out after 120 seconds\n",
+                           prefix="create-changes-error")
+            return False
+
+        except Exception as e:
+            log_thread(f"create_changes.py error: {e}")
+            self._save_error(ctx, f"create_changes.py error: {e}\n",
+                           prefix="create-changes-error")
+            return False
+
+    def _build_prompt_message(self, ctx: ReviewContext) -> str:
+        """Build the prompt message for Claude"""
+        if ctx.llm_mode == 'orc':
+            return f"""
             Current directory is the root of a Linux Kernel git repository.
-            Read the prompt from {full_prompt_path} and run it on the {commit_hash} commit.
+            Read the prompt from {ctx.full_prompt_path} and run it on the {ctx.commit_hash} commit.
             """
         else:
-            prompt_msg = f"""
+            return f"""
             Current directory is the root of a Linux Kernel git repository.
-            Read the prompt from {full_prompt_path}.
-            Using the prompt, do a deep dive regression analysis of the {commit_hash} commit.
-            Use commit range {git_range} for the false-positive-guide.md section.
+            Read the prompt from {ctx.full_prompt_path}.
+            Using the prompt, do a deep dive regression analysis of the {ctx.commit_hash} commit.
+            Use commit range {ctx.git_range} for the false-positive-guide.md section.
             """
 
-        # Build Claude command
-        cmd = [
+    def _build_claude_command(self, ctx: ReviewContext) -> List[str]:
+        """Build the Claude CLI command"""
+        prompt_msg = self._build_prompt_message(ctx)
+        return [
             'claude',
             '--mcp-config', self.config.mcp_config,
             '--strict-mcp-config',
             '--allowedTools', self.config.mcp_tools,
-            '--model', model,
+            '--model', ctx.model,
             '-p', prompt_msg,
             '--verbose',
             '--output-format=stream-json'
         ]
 
-        info_path = os.path.join(patch_dir, f'cmd-info{attempt}.txt')
+    def _write_command_info(self, ctx: ReviewContext, cmd: List[str]):
+        """Write command info file for debugging"""
+        info_path = os.path.join(ctx.patch_dir, f'cmd-info{ctx.attempt}.txt')
         with open(info_path, 'w') as f:
-            f.write(f"Claude cwd: {work_path}\n")
-            f.write(f"Prompt: {full_prompt_path}\n")
-            f.write(f"Model: {model}\n")
-            f.write(f"LLM mode: {llm_mode}\n")
-            f.write(f"Git range: {git_range}\n")
+            f.write(f"Claude cwd: {ctx.work_path}\n")
+            f.write(f"Prompt: {ctx.full_prompt_path}\n")
+            f.write(f"Model: {ctx.model}\n")
+            f.write(f"LLM mode: {ctx.llm_mode}\n")
+            f.write(f"Git range: {ctx.git_range}\n")
 
             # Get commit reference
             try:
                 result = subprocess.run(
                     ['git', 'show', '-s', '--format=reference'],
-                    cwd=work_path, capture_output=True, text=True, check=True
+                    cwd=ctx.work_path, capture_output=True, text=True, check=True
                 )
                 f.write(f"Commit: {result.stdout.strip()}\n")
             except subprocess.CalledProcessError:
                 pass
 
             f.write("\nCommand:\n")
-            # Use shlex to properly quote arguments for shell safety
-            import shlex
             f.write(" ".join(shlex.quote(arg) for arg in cmd))
             f.write("\n")
+
         log_thread(f"Launch Claude (see {info_path})")
 
-        review_json_path = os.path.join(patch_dir, 'review.json')
-        review_md_path = os.path.join(patch_dir, 'review.md')
-
+    def _execute_claude(self, ctx: ReviewContext, cmd: List[str]) -> bool:
+        """Execute Claude and handle results"""
         try:
             # Record LLM start time (only on first attempt of first patch)
-            if attempt == 1 and patch_num == 1:
-                self.storage.set_llm_start_time(review_id)
+            if ctx.attempt == 1 and ctx.patch_num == 1:
+                self.storage.set_llm_start_time(ctx.review_id)
 
-            # Run Claude and capture output
             start_time = time.time()
-            with open(review_json_path, 'w') as json_file:
-                result = subprocess.run(cmd, cwd=work_path, stdout=json_file,
-                                      stderr=subprocess.PIPE, timeout=self.config.claude_timeout)
+            with open(ctx.review_json_path, 'w') as json_file:
+                result = subprocess.run(
+                    cmd,
+                    cwd=ctx.work_path,
+                    stdout=json_file,
+                    stderr=subprocess.PIPE,
+                    timeout=self.config.claude_timeout
+                )
             elapsed = time.time() - start_time
 
             if result.returncode != 0:
-                log_thread(f"Claude review failed for {review_id} patch {patch_num} after {elapsed:.1f}s: {result.stderr.decode()}")
-                # Save stderr for inspection
-                stderr_path = os.path.join(patch_dir, f'claude-stderr-attempt{attempt}.txt')
-                with open(stderr_path, 'w') as f:
-                    f.write(result.stderr.decode())
+                return self._handle_claude_failure(ctx, result, elapsed)
 
-                # Save any partial output
-                self._save_partial_output(patch_dir, review_json_path, attempt)
-                return False
-
-            log_thread(f"Claude review completed for {review_id} patch {patch_num} in {elapsed:.1f}s")
-
-            # Copy review-inline.txt from work tree if it was created by Claude
-            inline_src = os.path.join(work_path, 'review-inline.txt')
-            if os.path.exists(inline_src):
-                inline_dst = os.path.join(patch_dir, 'review-inline.txt')
-                try:
-                    shutil.copy(inline_src, inline_dst)
-                    log_thread(f"Copied review-inline.txt for {review_id} patch {patch_num}")
-                except Exception as e:
-                    log_thread(f"Warning: Failed to copy review-inline.txt: {e}")
-
-            # Copy review-metadata.json from work tree if it was created by Claude
-            metadata_src = os.path.join(work_path, 'review-metadata.json')
-            if os.path.exists(metadata_src):
-                metadata_dst = os.path.join(patch_dir, 'review-metadata.json')
-                try:
-                    shutil.copy(metadata_src, metadata_dst)
-                    log_thread(f"Copied review-metadata.json for {review_id} patch {patch_num}")
-                except Exception as e:
-                    log_thread(f"Warning: Failed to copy review-metadata.json: {e}")
-
-            # Convert JSON to markdown format
-            try:
-                convert_json_to_markdown(review_json_path, review_md_path)
-                return True
-            except Exception as e:
-                log_thread(f"Error converting review to markdown: {e}")
-                return False
+            log_thread(f"Claude review completed for {ctx.review_id} patch {ctx.patch_num} in {elapsed:.1f}s")
+            return self._collect_review_outputs(ctx)
 
         except subprocess.TimeoutExpired as e:
-            elapsed = self.config.claude_timeout
-            log_thread(f"Claude review timed out for {review_id} patch {patch_num} after {elapsed}s (attempt {attempt})")
+            return self._handle_timeout(ctx, e)
 
-            # Save timeout information for inspection
-            timeout_info_path = os.path.join(patch_dir, f'timeout-info-attempt{attempt}.txt')
-            with open(timeout_info_path, 'w') as f:
-                f.write(f"Attempt: {attempt}\n")
-                f.write(f"Claude review timed out after {self.config.claude_timeout} seconds\n")
-                f.write(f"Command: {' '.join(cmd)}\n")
-                f.write(f"Working directory: {work_path}\n")
-                if hasattr(e, 'stderr') and e.stderr:
-                    f.write(f"\nStderr output:\n{e.stderr.decode()}\n")
-
-            # Save any partial output
-            self._save_partial_output(patch_dir, review_json_path, attempt)
-            return False
         except Exception as e:
             log_thread(f"Error running Claude review: {e}")
-            # Save error information
-            error_path = os.path.join(patch_dir, f'error-attempt{attempt}.txt')
-            with open(error_path, 'w') as f:
-                f.write(f"Attempt: {attempt}\n")
-                f.write(f"Error: {str(e)}\n")
-                import traceback
-                f.write(traceback.format_exc())
+            self._save_error(ctx, f"Error: {str(e)}\n{traceback.format_exc()}")
             return False
+
+    def _handle_claude_failure(self, ctx: ReviewContext, result, elapsed: float) -> bool:
+        """Handle Claude process failure"""
+        log_thread(f"Claude review failed for {ctx.review_id} patch {ctx.patch_num} "
+                  f"after {elapsed:.1f}s: {result.stderr.decode()}")
+
+        # Save stderr
+        stderr_path = os.path.join(ctx.patch_dir, f'claude-stderr-attempt{ctx.attempt}.txt')
+        with open(stderr_path, 'w') as f:
+            f.write(result.stderr.decode())
+
+        self._save_partial_output(ctx)
+        return False
+
+    def _handle_timeout(self, ctx: ReviewContext, exc: subprocess.TimeoutExpired) -> bool:
+        """Handle Claude timeout"""
+        log_thread(f"Claude review timed out for {ctx.review_id} patch {ctx.patch_num} "
+                  f"after {self.config.claude_timeout}s (attempt {ctx.attempt})")
+
+        timeout_info_path = os.path.join(ctx.patch_dir, f'timeout-info-attempt{ctx.attempt}.txt')
+        with open(timeout_info_path, 'w') as f:
+            f.write(f"Attempt: {ctx.attempt}\n")
+            f.write(f"Claude review timed out after {self.config.claude_timeout} seconds\n")
+            f.write(f"Working directory: {ctx.work_path}\n")
+            if hasattr(exc, 'stderr') and exc.stderr:
+                f.write(f"\nStderr output:\n{exc.stderr.decode()}\n")
+
+        self._save_partial_output(ctx)
+        return False
+
+    def _collect_review_outputs(self, ctx: ReviewContext) -> bool:
+        """Copy review outputs from work tree to patch directory"""
+        # Copy review-inline.txt if created
+        inline_src = os.path.join(ctx.work_path, 'review-inline.txt')
+        if os.path.exists(inline_src):
+            inline_dst = os.path.join(ctx.patch_dir, 'review-inline.txt')
+            try:
+                shutil.copy(inline_src, inline_dst)
+                log_thread(f"Copied review-inline.txt for {ctx.review_id} patch {ctx.patch_num}")
+            except Exception as e:
+                log_thread(f"Warning: Failed to copy review-inline.txt: {e}")
+
+        # Copy review-metadata.json if created
+        metadata_src = os.path.join(ctx.work_path, 'review-metadata.json')
+        if os.path.exists(metadata_src):
+            metadata_dst = os.path.join(ctx.patch_dir, 'review-metadata.json')
+            try:
+                shutil.copy(metadata_src, metadata_dst)
+                log_thread(f"Copied review-metadata.json for {ctx.review_id} patch {ctx.patch_num}")
+            except Exception as e:
+                log_thread(f"Warning: Failed to copy review-metadata.json: {e}")
+
+        # Convert JSON to markdown
+        try:
+            convert_json_to_markdown(ctx.review_json_path, ctx.review_md_path)
+            return True
+        except Exception as e:
+            log_thread(f"Error converting review to markdown: {e}")
+            return False
+
+    def _save_partial_output(self, ctx: ReviewContext):
+        """Save partial review output if available"""
+        if not os.path.exists(ctx.review_json_path) or os.path.getsize(ctx.review_json_path) == 0:
+            return
+
+        partial_json_path = os.path.join(ctx.patch_dir, f'review-partial-attempt{ctx.attempt}.json')
+        try:
+            shutil.copy(ctx.review_json_path, partial_json_path)
+            log_thread(f"Partial output saved to {partial_json_path}")
+        except Exception:
+            pass
+
+        # Try to convert partial JSON to markdown (best effort)
+        try:
+            partial_md_path = os.path.join(ctx.patch_dir, f'review-partial-attempt{ctx.attempt}.md')
+            convert_json_to_markdown(ctx.review_json_path, partial_md_path)
+        except Exception:
+            pass
+
+    def _save_error(self, ctx: ReviewContext, message: str, prefix: str = "error"):
+        """Save error information to file"""
+        error_path = os.path.join(ctx.patch_dir, f'{prefix}-attempt{ctx.attempt}.txt')
+        with open(error_path, 'w') as f:
+            f.write(f"Attempt: {ctx.attempt}\n")
+            f.write(message)
