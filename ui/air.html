@@ -642,10 +642,18 @@
                 <label style="display: flex; align-items: center; gap: 6px; font-size: 14px;">
                     Limit:
                     <select id="reviewLimit" style="padding: 4px 8px;">
-                        <option value="50">50</option>
-                        <option value="100">100</option>
-                        <option value="200" selected>200</option>
+                        <option value="250" selected>250</option>
                         <option value="500">500</option>
+                        <option value="1000">1000</option>
+                        <option value="1500">1500</option>
+                    </select>
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 14px;">
+                    User:
+                    <select id="userFilter" style="padding: 4px 8px;">
+                        <option value="">All</option>
+                        <option value="__public__">All Public</option>
+                        <option value="__private__">All Private</option>
                     </select>
                 </label>
                 <button class="token-minimized" id="tokenMinimized" onclick="showTokenConfig()">
@@ -966,6 +974,7 @@
 
         // Refresh chart and review list when filters change
         document.getElementById('superuserMode').addEventListener('change', function() {
+            cachedReviews = null; // Clear cache since visible reviews change
             loadCharts();
             listReviews();
         });
@@ -976,9 +985,193 @@
             listReviews();
         });
         document.getElementById('reviewLimit').addEventListener('change', function() {
+            cachedReviews = null; // Clear cache to force re-fetch with new limit
             loadCharts();
             listReviews();
         });
+        document.getElementById('userFilter').addEventListener('change', function() {
+            // Only re-filter cached data, don't re-fetch
+            applyFilterAndUpdateDisplay();
+        });
+
+        // Cache for fetched reviews
+        let cachedReviews = null;
+
+        function applyFilterAndUpdateDisplay() {
+            if (!cachedReviews) {
+                console.log('No cached reviews, triggering full load');
+                loadCharts();
+                return;
+            }
+
+            // Apply user filter to cached reviews
+            const filteredReviews = applyUserFilter(cachedReviews);
+            console.log(`Filtering cached ${cachedReviews.length} reviews -> ${filteredReviews.length} after filter`);
+
+            // Update stats table and charts
+            updateStatsTable(filteredReviews);
+            updateReviewChart(filteredReviews);
+            updateAveragesChart(filteredReviews);
+
+            // Also update the reviews list
+            listReviews();
+        }
+
+        function populateUserFilter(reviews) {
+            const select = document.getElementById('userFilter');
+            const currentValue = select.value;
+
+            // Extract unique token owners
+            const users = new Map();
+            reviews.forEach(review => {
+                if (review.token_owner) {
+                    users.set(review.token_owner, review.is_public);
+                }
+            });
+
+            // Sort users alphabetically
+            const sortedUsers = Array.from(users.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+
+            // Rebuild options (keep meta options)
+            select.innerHTML = `
+                <option value="">All</option>
+                <option value="__public__">All Public</option>
+                <option value="__private__">All Private</option>
+            `;
+
+            sortedUsers.forEach(([user, isPublic]) => {
+                const icon = isPublic ? '🤖' : '👤';
+                const option = document.createElement('option');
+                option.value = user;
+                option.textContent = `${icon} ${user}`;
+                select.appendChild(option);
+            });
+
+            // Restore selection if still valid
+            if (currentValue && Array.from(select.options).some(opt => opt.value === currentValue)) {
+                select.value = currentValue;
+            }
+        }
+
+        function applyUserFilter(reviews) {
+            const filterValue = document.getElementById('userFilter').value;
+
+            if (!filterValue) {
+                // Debug: log counts for All
+                const publicCount = reviews.filter(r => r.is_public).length;
+                const privateCount = reviews.filter(r => !r.is_public).length;
+                console.log(`All filter: ${reviews.length} reviews (public: ${publicCount}, private: ${privateCount}, sum: ${publicCount + privateCount})`);
+                return reviews; // No filter
+            }
+
+            if (filterValue === '__public__') {
+                const filtered = reviews.filter(r => r.is_public);
+                console.log(`Public filter: ${filtered.length} of ${reviews.length} reviews (is_public=true)`);
+                return filtered;
+            }
+
+            if (filterValue === '__private__') {
+                const filtered = reviews.filter(r => !r.is_public);
+                console.log(`Private filter: ${filtered.length} of ${reviews.length} reviews (is_public=false/undefined)`);
+                // Debug: check for undefined is_public
+                const undefinedCount = reviews.filter(r => r.is_public === undefined).length;
+                const falseCount = reviews.filter(r => r.is_public === false).length;
+                console.log(`  - is_public undefined: ${undefinedCount}, is_public false: ${falseCount}`);
+                return filtered;
+            }
+
+            // Filter by specific user
+            return reviews.filter(r => r.token_owner === filterValue);
+        }
+
+        function updateStatsTable(reviews) {
+            const now = new Date();
+            const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
+            const twentyEightDaysAgo = new Date(now - 28 * 24 * 60 * 60 * 1000);
+
+            function computeStats(reviewList) {
+                let completed = 0, patches = 0, feedback = 0, errors = 0, cost = 0;
+                let hasCost = false;
+
+                reviewList.forEach(r => {
+                    if (r.status === 'done') {
+                        completed++;
+                        patches += r.patch_count || 0;
+                    }
+                    if (r.status === 'error') {
+                        errors++;
+                    }
+                    if (r.feedback || r.has_feedback) {
+                        feedback++;
+                    }
+                    if (r.cost_usd !== undefined) {
+                        hasCost = true;
+                        cost += r.cost_usd || 0;
+                    }
+                });
+
+                return { completed, patches, feedback, errors, cost: hasCost ? cost : null };
+            }
+
+            // Filter by time periods
+            const reviews7d = reviews.filter(r => {
+                const d = parseUTCDate(r.date);
+                return d && d >= sevenDaysAgo;
+            });
+            const reviews28d = reviews.filter(r => {
+                const d = parseUTCDate(r.date);
+                return d && d >= twentyEightDaysAgo;
+            });
+
+            const stats7d = computeStats(reviews7d);
+            const stats28d = computeStats(reviews28d);
+            const statsTotal = computeStats(reviews);
+
+            const hasCost = statsTotal.cost !== null;
+            const formatCost = (cost) => cost !== null ? `$${cost.toFixed(2)}` : '-';
+
+            const tableContainer = document.getElementById('statsTable');
+            tableContainer.innerHTML = `
+                <table class="stats-table">
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th>Completed</th>
+                            <th>Patches</th>
+                            <th>Feedback</th>
+                            <th>Errors</th>
+                            ${hasCost ? '<th>Cost</th>' : ''}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Last 7 days</td>
+                            <td>${stats7d.completed}</td>
+                            <td>${stats7d.patches}</td>
+                            <td>${stats7d.feedback}</td>
+                            <td>${stats7d.errors}</td>
+                            ${hasCost ? `<td>${formatCost(stats7d.cost)}</td>` : ''}
+                        </tr>
+                        <tr>
+                            <td>Last 28 days</td>
+                            <td>${stats28d.completed}</td>
+                            <td>${stats28d.patches}</td>
+                            <td>${stats28d.feedback}</td>
+                            <td>${stats28d.errors}</td>
+                            ${hasCost ? `<td>${formatCost(stats28d.cost)}</td>` : ''}
+                        </tr>
+                        <tr>
+                            <td>Total (loaded)</td>
+                            <td><strong>${statsTotal.completed}</strong></td>
+                            <td><strong>${statsTotal.patches}</strong></td>
+                            <td><strong>${statsTotal.feedback}</strong></td>
+                            <td><strong>${statsTotal.errors}</strong></td>
+                            ${hasCost ? `<td><strong>${formatCost(statsTotal.cost)}</strong></td>` : ''}
+                        </tr>
+                    </tbody>
+                </table>
+            `;
+        }
 
         async function loadCharts() {
             const token = getToken();
@@ -1002,9 +1195,24 @@
 
                 console.log(`Fetched ${result.reviews.length} reviews for charts`);
 
-                // Update both charts with the same data
-                updateReviewChart(result.reviews);
-                updateAveragesChart(result.reviews);
+                // Cache reviews for filtering
+                cachedReviews = result.reviews;
+
+                // Populate user filter dropdown from all reviews
+                populateUserFilter(result.reviews);
+
+                // Apply user filter
+                const userFilterValue = document.getElementById('userFilter').value;
+                const filteredReviews = applyUserFilter(result.reviews);
+                console.log(`After user filter: ${filteredReviews.length} reviews`);
+
+                // Always update stats table from loaded reviews for consistency
+                // (so All Public + All Private = All)
+                updateStatsTable(filteredReviews);
+
+                // Update charts with filtered data
+                updateReviewChart(filteredReviews);
+                updateAveragesChart(filteredReviews);
             } catch (error) {
                 console.error('Error loading charts:', error);
             }
@@ -1660,54 +1868,8 @@
                     </div>
                 `;
 
-                // Update stats table in Review History tab
-                if (data.stats) {
-                    const s = data.stats;
-                    const hasCost = s.total.cost !== null;
-                    const formatCost = (cost) => cost !== null ? `$${cost.toFixed(2)}` : '-';
-
-                    const tableContainer = document.getElementById('statsTable');
-                    tableContainer.innerHTML = `
-                        <table class="stats-table">
-                            <thead>
-                                <tr>
-                                    <th></th>
-                                    <th>Completed</th>
-                                    <th>Patches</th>
-                                    <th>Feedback</th>
-                                    <th>Errors</th>
-                                    ${hasCost ? '<th>Cost</th>' : ''}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td>Last 7 days</td>
-                                    <td>${s['7d'].completed}</td>
-                                    <td>${s['7d'].patches}</td>
-                                    <td>${s['7d'].feedback}</td>
-                                    <td>${s['7d'].errors}</td>
-                                    ${hasCost ? `<td>${formatCost(s['7d'].cost)}</td>` : ''}
-                                </tr>
-                                <tr>
-                                    <td>Last 28 days</td>
-                                    <td>${s['28d'].completed}</td>
-                                    <td>${s['28d'].patches}</td>
-                                    <td>${s['28d'].feedback}</td>
-                                    <td>${s['28d'].errors}</td>
-                                    ${hasCost ? `<td>${formatCost(s['28d'].cost)}</td>` : ''}
-                                </tr>
-                                <tr>
-                                    <td>Total</td>
-                                    <td><strong>${s.total.completed}</strong></td>
-                                    <td><strong>${s.total.patches}</strong></td>
-                                    <td><strong>${s.total.feedback}</strong></td>
-                                    <td><strong>${s.total.errors}</strong></td>
-                                    ${hasCost ? `<td><strong>${formatCost(s.total.cost)}</strong></td>` : ''}
-                                </tr>
-                            </tbody>
-                        </table>
-                    `;
-                }
+                // Stats table is now always updated by loadCharts() for consistency
+                // (so All Public + All Private = All, all based on loaded reviews)
             } catch (error) {
                 console.error('Error loading status:', error);
             }
@@ -1868,6 +2030,9 @@
                         ...review,
                         hasFeedback: review.has_feedback || false
                     }));
+
+                    // Apply user filter
+                    reviews = applyUserFilter(reviews);
 
                     // Sort reviews based on selected option
                     switch (sortBy) {
