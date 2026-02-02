@@ -33,7 +33,8 @@ class TokenAuth:
                             'name': token_info.get('name', ''),
                             'date': token_info.get('date', ''),
                             'superuser': token_info.get('superuser', False),
-                            'public_read': token_info.get('public_read', False)
+                            'public_read': token_info.get('public_read', False),
+                            'allowed_sources': token_info.get('allowed_sources', None)
                         }
         except FileNotFoundError:
             # Create empty token file
@@ -76,6 +77,24 @@ class TokenAuth:
         if token not in self.tokens:
             return False
         return self.tokens[token].get('public_read', False)
+
+    def is_source_allowed(self, token: str, source: str) -> bool:
+        """Check if a submission source is allowed for this token
+
+        Args:
+            token: Token string to check
+            source: Source type ('patchwork', 'patches', or 'hash')
+
+        Returns:
+            True if source is allowed, False otherwise.
+            If allowed_sources is not set (None), all sources are allowed.
+        """
+        if token not in self.tokens:
+            return False
+        allowed = self.tokens[token].get('allowed_sources')
+        if allowed is None:
+            return True  # No restrictions
+        return source in allowed
 
     def get_token_info(self, token: str) -> Optional[Dict]:
         """Get information about a token
@@ -130,6 +149,8 @@ class TokenAuth:
                 token_entry['superuser'] = True
             if info.get('public_read'):
                 token_entry['public_read'] = True
+            if info.get('allowed_sources'):
+                token_entry['allowed_sources'] = info['allowed_sources']
             token_list.append(token_entry)
 
         with open(self.token_db_path, 'w') as f:

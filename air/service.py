@@ -101,6 +101,19 @@ class AirService:
             print(f"[submit_review] Validation failed: input_count={input_count}")
             raise ValueError("Exactly one of patchwork_series_id, patches, or hash must be provided")
 
+        # Check if token is allowed to use this source type
+        if self.token_auth:
+            if has_patchwork:
+                source = 'patchwork'
+            elif has_patches:
+                source = 'patches'
+            else:
+                source = 'hash'
+
+            if not self.token_auth.is_source_allowed(token, source):
+                print(f"[submit_review] Token not allowed to use source: {source}")
+                raise ValueError(f"Token is not allowed to submit via {source}")
+
         # Validate required fields
         if 'tree' not in data or not data['tree']:
             print("[submit_review] Validation failed: tree missing")
