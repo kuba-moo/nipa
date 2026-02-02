@@ -727,6 +727,10 @@
             <div class="chart-container">
                 <canvas id="averagesChart"></canvas>
             </div>
+            <h3 style="margin-top: 40px;">Feedback Breakdown (36-hour rolling)</h3>
+            <div class="chart-container">
+                <canvas id="feedbackChart"></canvas>
+            </div>
         </div>
 
         <!-- Recent Reviews Tab -->
@@ -969,6 +973,7 @@
         // Initialize and update review chart
         let reviewChart = null;
         let averagesChart = null;
+        let feedbackChart = null;
         loadCharts();
         setInterval(loadCharts, 30000); // Refresh every 30 seconds
 
@@ -1012,6 +1017,7 @@
             updateStatsTable(filteredReviews);
             updateReviewChart(filteredReviews);
             updateAveragesChart(filteredReviews);
+            updateFeedbackChart(filteredReviews);
 
             // Also update the reviews list
             listReviews();
@@ -1213,6 +1219,7 @@
                 // Update charts with filtered data
                 updateReviewChart(filteredReviews);
                 updateAveragesChart(filteredReviews);
+                updateFeedbackChart(filteredReviews);
             } catch (error) {
                 console.error('Error loading charts:', error);
             }
@@ -1771,6 +1778,242 @@
                         }
                     });
                 }
+        }
+
+        function updateFeedbackChart(reviews) {
+            // Only process completed reviews
+            const completedReviews = reviews.filter(r => r.status === 'done');
+
+            if (completedReviews.length === 0) {
+                return;
+            }
+
+            // Group reviews by 6-hour buckets (like the review chart)
+            const dataByBucket = {};
+            completedReviews.forEach(review => {
+                const timestamp = parseUTCDate(review.date);
+                if (!timestamp) return;
+
+                // Round to nearest 6-hour bucket
+                const hours = timestamp.getHours();
+                const bucketHour = Math.floor(hours / 6) * 6;
+                timestamp.setHours(bucketHour, 0, 0, 0);
+                const bucketKey = timestamp.toISOString();
+
+                if (!dataByBucket[bucketKey]) {
+                    dataByBucket[bucketKey] = {
+                        total: 0,
+                        hasOutput: 0,
+                        emailed: 0,
+                        'false-positive': 0,
+                        'false-negative': 0
+                    };
+                }
+
+                dataByBucket[bucketKey].total++;
+                if (review.has_feedback) {
+                    dataByBucket[bucketKey].hasOutput++;
+                }
+                if (review.feedback) {
+                    dataByBucket[bucketKey][review.feedback] = (dataByBucket[bucketKey][review.feedback] || 0) + 1;
+                }
+            });
+
+            // Get sorted buckets
+            const allBuckets = Object.keys(dataByBucket).sort();
+
+            // Calculate 36-hour rolling percentages (6 buckets of 6 hours each)
+            const rollingData = allBuckets.map((bucket, idx) => {
+                // Get last 6 buckets of data (36 hours)
+                const windowStart = Math.max(0, idx - 5);
+                const windowBuckets = allBuckets.slice(windowStart, idx + 1);
+
+                let total = 0, hasOutput = 0, emailed = 0, falsePositive = 0, falseNegative = 0;
+                windowBuckets.forEach(b => {
+                    total += dataByBucket[b].total;
+                    hasOutput += dataByBucket[b].hasOutput || 0;
+                    emailed += dataByBucket[b].emailed || 0;
+                    falsePositive += dataByBucket[b]['false-positive'] || 0;
+                    falseNegative += dataByBucket[b]['false-negative'] || 0;
+                });
+
+                const withFeedback = emailed + falsePositive + falseNegative;
+
+                return {
+                    bucket: bucket,
+                    total: total,
+                    withFeedback: withFeedback,
+                    // Percentage of reviews with AI output
+                    hasOutputPct: total > 0 ? (hasOutput / total) * 100 : null,
+                    // Percentages of all reviews (for dotted lines)
+                    emailedPctAll: total > 0 ? (emailed / total) * 100 : null,
+                    fpPctAll: total > 0 ? (falsePositive / total) * 100 : null,
+                    fnPctAll: total > 0 ? (falseNegative / total) * 100 : null,
+                    // Percentages of reviews with feedback (for solid lines)
+                    emailedPctFeedback: withFeedback > 0 ? (emailed / withFeedback) * 100 : null,
+                    fpPctFeedback: withFeedback > 0 ? (falsePositive / withFeedback) * 100 : null,
+                    fnPctFeedback: withFeedback > 0 ? (falseNegative / withFeedback) * 100 : null
+                };
+            });
+
+            // Convert to chart datasets
+            const hasOutputData = rollingData.map(d => ({ x: d.bucket, y: d.hasOutputPct }));
+            const emailedAllData = rollingData.map(d => ({ x: d.bucket, y: d.emailedPctAll }));
+            const fpAllData = rollingData.map(d => ({ x: d.bucket, y: d.fpPctAll }));
+            const fnAllData = rollingData.map(d => ({ x: d.bucket, y: d.fnPctAll }));
+            const emailedFeedbackData = rollingData.map(d => ({ x: d.bucket, y: d.emailedPctFeedback }));
+            const fpFeedbackData = rollingData.map(d => ({ x: d.bucket, y: d.fpPctFeedback }));
+            const fnFeedbackData = rollingData.map(d => ({ x: d.bucket, y: d.fnPctFeedback }));
+
+            const ctx = document.getElementById('feedbackChart');
+
+            const datasets = [
+                // Gray solid line - % of reviews with AI output
+                {
+                    label: 'Has Review Output (% of all)',
+                    data: hasOutputData,
+                    borderColor: '#6c757d',
+                    backgroundColor: 'rgba(108, 117, 125, 0.1)',
+                    tension: 0.1,
+                    fill: false,
+                    spanGaps: false,
+                    pointRadius: 0
+                },
+                // Solid lines - % of reviews with feedback
+                {
+                    label: 'Emailed (% of categorized)',
+                    data: emailedFeedbackData,
+                    borderColor: '#28a745',
+                    backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                    tension: 0.1,
+                    fill: false,
+                    spanGaps: false,
+                    pointRadius: 0
+                },
+                {
+                    label: 'False Positive (% of categorized)',
+                    data: fpFeedbackData,
+                    borderColor: '#dc3545',
+                    backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                    tension: 0.1,
+                    fill: false,
+                    spanGaps: false,
+                    pointRadius: 0
+                },
+                {
+                    label: 'False Negative (% of categorized)',
+                    data: fnFeedbackData,
+                    borderColor: '#ffc107',
+                    backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                    tension: 0.1,
+                    fill: false,
+                    spanGaps: false,
+                    pointRadius: 0
+                },
+                // Dotted lines - % of all reviews
+                {
+                    label: 'Emailed (% of all)',
+                    data: emailedAllData,
+                    borderColor: '#28a745',
+                    backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                    tension: 0.1,
+                    fill: false,
+                    spanGaps: false,
+                    borderDash: [5, 5],
+                    pointRadius: 0
+                },
+                {
+                    label: 'False Positive (% of all)',
+                    data: fpAllData,
+                    borderColor: '#dc3545',
+                    backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                    tension: 0.1,
+                    fill: false,
+                    spanGaps: false,
+                    borderDash: [5, 5],
+                    pointRadius: 0
+                },
+                {
+                    label: 'False Negative (% of all)',
+                    data: fnAllData,
+                    borderColor: '#ffc107',
+                    backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                    tension: 0.1,
+                    fill: false,
+                    spanGaps: false,
+                    borderDash: [5, 5],
+                    pointRadius: 0
+                }
+            ];
+
+            if (feedbackChart) {
+                feedbackChart.data.datasets = datasets;
+                feedbackChart.update();
+            } else {
+                feedbackChart = new Chart(ctx, {
+                    type: 'line',
+                    data: { datasets: datasets },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false
+                        },
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                labels: {
+                                    color: getComputedStyle(document.documentElement).getPropertyValue('--text-primary')
+                                }
+                            },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false,
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.dataset.label || '';
+                                        if (label) label += ': ';
+                                        if (context.parsed.y !== null) {
+                                            label += context.parsed.y.toFixed(1) + '%';
+                                        }
+                                        return label;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                type: 'time',
+                                time: {
+                                    unit: 'day',
+                                    displayFormats: { day: 'MMM d' }
+                                },
+                                grid: {
+                                    color: getComputedStyle(document.documentElement).getPropertyValue('--border-color')
+                                },
+                                ticks: {
+                                    color: getComputedStyle(document.documentElement).getPropertyValue('--text-primary')
+                                }
+                            },
+                            y: {
+                                type: 'linear',
+                                beginAtZero: true,
+                                max: 100,
+                                grid: {
+                                    color: getComputedStyle(document.documentElement).getPropertyValue('--border-color')
+                                },
+                                ticks: {
+                                    color: getComputedStyle(document.documentElement).getPropertyValue('--text-primary'),
+                                    callback: function(value) {
+                                        return value + '%';
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
         }
 
         // Input type switcher
