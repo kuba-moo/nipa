@@ -975,7 +975,8 @@
         let averagesChart = null;
         let feedbackChart = null;
         loadCharts();
-        setInterval(loadCharts, 30000); // Refresh every 30 seconds
+        // Charts/tables only refresh on user action (filter/limit changes), not periodically
+        // to avoid expensive queries when Limit is set high
 
         // Refresh chart and review list when filters change
         document.getElementById('superuserMode').addEventListener('change', function() {
