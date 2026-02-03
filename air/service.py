@@ -266,8 +266,8 @@ class AirService:
         if is_superuser and metadata.get('cost_usd'):
             result['cost_usd'] = metadata['cost_usd']
 
-        # Add feedback (only for superusers)
-        if is_superuser and metadata.get('feedback'):
+        # Add feedback (for superusers and owners)
+        if (is_superuser or is_owner) and metadata.get('feedback'):
             result['feedback'] = metadata['feedback']
 
         # Add queue position if queued
@@ -399,8 +399,9 @@ class AirService:
             if is_requesting_superuser and r.get('cost_usd'):
                 review_info['cost_usd'] = r['cost_usd']
 
-            # Add feedback (only for superusers)
-            if is_requesting_superuser and r.get('feedback'):
+            # Add feedback (for superusers and owners)
+            is_owner = token and r.get('token') == token
+            if (is_requesting_superuser or is_owner) and r.get('feedback'):
                 review_info['feedback'] = r['feedback']
 
             # Calculate duration for completed/error reviews
