@@ -196,6 +196,10 @@ class ReviewStorage:
             self.reviews[review_id]['completed_patches'] += 1
             if not success:
                 self.reviews[review_id]['failed_patches'] += 1
+                # Track which specific patches failed
+                if 'failed_patch_nums' not in self.reviews[review_id]:
+                    self.reviews[review_id]['failed_patch_nums'] = []
+                self.reviews[review_id]['failed_patch_nums'].append(patch_num)
 
             completed = self.reviews[review_id]['completed_patches']
             failed = self.reviews[review_id]['failed_patches']

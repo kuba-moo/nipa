@@ -261,6 +261,8 @@ class AirService:
             result['patch_count'] = metadata['patch_count']
         if metadata.get('completed_patches'):
             result['completed_patches'] = metadata['completed_patches']
+        if metadata.get('failed_patch_nums'):
+            result['failed_patch_nums'] = metadata['failed_patch_nums']
 
         # Add cost (only for superusers)
         if is_superuser and metadata.get('cost_usd'):

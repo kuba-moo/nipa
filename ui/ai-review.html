@@ -302,6 +302,11 @@
             border: 1px solid var(--border-color);
         }
 
+        .patch-nav-item.patch-error {
+            background-color: var(--status-error-bg);
+            color: var(--status-error-text);
+        }
+
         .patch-nav-item:hover {
             opacity: 0.8;
             transform: translateY(-2px);
@@ -322,6 +327,15 @@
             color: var(--no-review-color);
             font-size: 0.9em;
             font-weight: normal;
+            font-style: italic;
+        }
+
+        .patch-error-content {
+            background-color: var(--error-bg);
+            color: var(--error-text);
+            border: 1px solid var(--error-border);
+            padding: 15px;
+            border-radius: 4px;
             font-style: italic;
         }
     </style>
@@ -470,6 +484,7 @@
 
         let currentFormat = 'inline';  // Default to inline/Review format
         let inlineReviews = [];  // Store inline reviews for navigation coloring
+        let failedPatchNums = [];  // Store failed patch numbers
         let refreshInterval = null;  // Interval for auto-refreshing in-progress reviews
 
         if (!reviewId) {
@@ -539,6 +554,9 @@
             const patchCount = data.patch_count || 0;
             const completedCount = data.completed_patches || 0;
             document.getElementById('review-patches').textContent = patchCount;
+
+            // Store failed patch numbers for navigation display
+            failedPatchNums = data.failed_patch_nums || [];
 
             // Progress info for in-progress reviews
             if (data.status === 'in-progress' && patchCount > 0) {
@@ -688,6 +706,9 @@
             navContainer.style.display = 'flex';
 
             reviews.forEach((review, index) => {
+                const patchNum = index + 1;
+                const isFailed = failedPatchNums.includes(patchNum);
+
                 // Use inline reviews to determine if patch has comments (for navigation coloring)
                 const inlineReview = inlineReviews[index];
                 const hasCommentsInline = inlineReview !== null && inlineReview !== '';
@@ -696,12 +717,20 @@
                 const hasComments = review !== null && review !== '';
                 const patchId = `patch-${index}`;
 
-                // Create navigation item - color based on inline format
+                // Create navigation item - color based on error status or inline format
                 const navItem = document.createElement('a');
-                navItem.className = `patch-nav-item ${hasCommentsInline ? 'has-comments' : 'no-comments'}`;
-                navItem.textContent = `${index + 1}`;
+                if (isFailed) {
+                    navItem.className = 'patch-nav-item patch-error';
+                    navItem.title = `Patch ${patchNum}: Review failed (timeout or error)`;
+                } else if (hasCommentsInline) {
+                    navItem.className = 'patch-nav-item has-comments';
+                    navItem.title = `Patch ${patchNum}: Has review comments`;
+                } else {
+                    navItem.className = 'patch-nav-item no-comments';
+                    navItem.title = `Patch ${patchNum}: No comments`;
+                }
+                navItem.textContent = `${patchNum}`;
                 navItem.href = `#${patchId}`;
-                navItem.title = hasCommentsInline ? `Patch ${index + 1}: Has review comments` : `Patch ${index + 1}: No comments`;
                 navContainer.appendChild(navItem);
 
                 // Create patch review section
@@ -713,11 +742,17 @@
                 headerDiv.className = 'patch-header';
 
                 const headerTitle = document.createElement('span');
-                headerTitle.textContent = `Patch ${index + 1}`;
+                headerTitle.textContent = `Patch ${patchNum}`;
                 headerDiv.appendChild(headerTitle);
 
-                // Show "No review comments" based on inline format
-                if (!hasCommentsInline) {
+                // Show status in header based on error or inline format
+                if (isFailed) {
+                    const errorSpan = document.createElement('span');
+                    errorSpan.className = 'no-comments-inline';
+                    errorSpan.style.color = 'var(--status-error-text)';
+                    errorSpan.textContent = 'Review failed';
+                    headerDiv.appendChild(errorSpan);
+                } else if (!hasCommentsInline) {
                     const noCommentsSpan = document.createElement('span');
                     noCommentsSpan.className = 'no-comments-inline';
                     noCommentsSpan.textContent = 'No review comments';
@@ -726,8 +761,18 @@
 
                 patchDiv.appendChild(headerDiv);
 
-                // Only add content div if there are comments in current format
-                if (hasComments) {
+                // Add content div - error message for failed patches, review content otherwise
+                if (isFailed) {
+                    const contentDiv = document.createElement('div');
+                    contentDiv.className = 'patch-content';
+
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'patch-error-content';
+                    errorDiv.textContent = 'This patch could not be reviewed due to a timeout or error. Please try resubmitting the review.';
+                    contentDiv.appendChild(errorDiv);
+
+                    patchDiv.appendChild(contentDiv);
+                } else if (hasComments) {
                     const contentDiv = document.createElement('div');
                     contentDiv.className = 'patch-content';
 
