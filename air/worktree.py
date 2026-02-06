@@ -87,16 +87,18 @@ class WorkTreeManager:
         log_thread(f"Creating temp repo copy: {temp_path}")
         try:
             # Step 1: Copy to sibling location (avoids recursion)
-            subprocess.run([
+            result = subprocess.run([
                 'cp', '-a', '--reflink=auto',
                 self.git_tree,
                 staging_path
-            ], check=True, capture_output=True)
+            ], check=True, capture_output=True, text=True)
 
             # Step 2: Move into the git tree (just a rename, preserves reflinks)
             shutil.move(staging_path, temp_path)
         except subprocess.CalledProcessError as e:
             log_thread(f"Error creating temp repo copy: {e}")
+            log_thread(f"stdout: {e.stdout}")
+            log_thread(f"stderr: {e.stderr}")
             # Clean up staging path if it exists
             if os.path.exists(staging_path):
                 shutil.rmtree(staging_path)
