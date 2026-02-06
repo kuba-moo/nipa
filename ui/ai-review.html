@@ -177,6 +177,16 @@
             color: var(--status-error-text);
         }
 
+        .chip-warning {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 0.9em;
+            font-weight: bold;
+            background-color: var(--status-queued-bg);
+            color: var(--status-queued-text);
+        }
+
         .error-message {
             background-color: var(--error-bg);
             color: var(--error-text);
@@ -622,7 +632,7 @@
             }
 
             // Show time until public access (for owners viewing public reviews)
-            if (data.public_in_hours !== undefined) {
+            if (data.public_in_hours !== undefined && data.public_in_hours > 0) {
                 document.getElementById('public-in-info').style.display = 'block';
                 const hours = data.public_in_hours;
                 let timeText;
@@ -631,7 +641,7 @@
                 } else {
                     timeText = `${hours.toFixed(1)} hours`;
                 }
-                document.getElementById('review-public-in').textContent = timeText;
+                document.getElementById('review-public-in').innerHTML = `<span class="chip-warning">${timeText}</span>`;
             }
 
             // Message (error or warning)
