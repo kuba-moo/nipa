@@ -33,7 +33,7 @@ class AirService:
         # Initialize components
         self.storage = ReviewStorage(config.results_path)
         self.queue = ReviewQueue(os.path.join(config.results_path, 'queue.json'))
-        self.worktree_mgr = WorkTreeManager(config.git_tree, config.max_work_trees)
+        self.worktree_mgr = WorkTreeManager(config.git_tree, config.temp_copies_path, config.max_work_trees)
 
         # Initialize temp copy queue
         # Max size = 2x the number of LLM workers to allow some buffering

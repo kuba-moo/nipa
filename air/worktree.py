@@ -15,14 +15,15 @@ class WorkTreeManager:
     """Manages git repository for review processing
 
     This class works directly with the main git repository and creates
-    temporary copies for individual patch reviews.
+    temporary copies in a separate directory for individual patch reviews.
     """
 
-    def __init__(self, git_tree: str, max_work_trees: int):
+    def __init__(self, git_tree: str, temp_copies_path: str, max_work_trees: int):
         """Initialize repository manager
 
         Args:
             git_tree: Path to the main git repository
+            temp_copies_path: Path to directory for temporary repo copies
             max_work_trees: Must be 1 (multiple work trees not implemented)
         """
         if max_work_trees != 1:
@@ -32,6 +33,7 @@ class WorkTreeManager:
             )
 
         self.git_tree = git_tree
+        self.temp_copies_path = temp_copies_path
         self.max_work_trees = max_work_trees
         self.lock = Lock()
 
@@ -76,40 +78,19 @@ class WorkTreeManager:
 
         # Create temp copy with wt- prefix and commit hash in name
         temp_name = f"wt-{commit_hash[:12]}"
-        temp_path = os.path.join(self.git_tree, temp_name)
-
-        # To avoid recursive copy (copying into itself), we first copy to a
-        # sibling directory, then move it inside. This preserves reflinks
-        # since the move is just a rename on the same filesystem.
-        parent_dir = os.path.dirname(self.git_tree)
-        staging_path = os.path.join(parent_dir, temp_name)
+        temp_path = os.path.join(self.temp_copies_path, temp_name)
 
         log_thread(f"Creating temp repo copy: {temp_path}")
         try:
-            # Step 1: Copy to sibling location (avoids recursion)
             result = subprocess.run([
                 'cp', '-a', '--reflink=auto',
                 self.git_tree,
-                staging_path
+                temp_path
             ], check=True, capture_output=True, text=True)
-
-            # Step 2: Move into the git tree (just a rename, preserves reflinks)
-            shutil.move(staging_path, temp_path)
         except subprocess.CalledProcessError as e:
             log_thread(f"Error creating temp repo copy: {e}")
             log_thread(f"stdout: {e.stdout}")
             log_thread(f"stderr: {e.stderr}")
-            # Clean up staging path if it exists
-            if os.path.exists(staging_path):
-                shutil.rmtree(staging_path)
-            raise
-        except Exception as e:
-            log_thread(f"Error moving temp repo copy: {e}")
-            # Clean up both paths if they exist
-            if os.path.exists(staging_path):
-                shutil.rmtree(staging_path)
-            if os.path.exists(temp_path):
-                shutil.rmtree(temp_path)
             raise
 
         return temp_path

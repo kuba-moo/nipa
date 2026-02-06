@@ -23,6 +23,7 @@ class AirConfig:
 
         # Basic configuration
         self.git_tree = config.get('air', 'git_tree')
+        self.temp_copies_path = config.get('air', 'temp_copies_path')
         self.max_work_trees = config.getint('air', 'max_work_trees', fallback=4)
         self.max_claude_runs = config.getint('air', 'max_claude_runs', fallback=4)
         self.token_db_path = config.get('air', 'token_db')
@@ -49,3 +50,4 @@ class AirConfig:
         # Ensure results path exists
         os.makedirs(self.results_path, exist_ok=True)
         os.makedirs(os.path.dirname(self.token_db_path), exist_ok=True)
+        os.makedirs(self.temp_copies_path, exist_ok=True)
