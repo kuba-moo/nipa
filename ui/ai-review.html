@@ -348,6 +348,78 @@
             border-radius: 4px;
             font-style: italic;
         }
+
+        .collapsible-box {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+
+        .collapsible-header {
+            padding: 15px 20px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            user-select: none;
+        }
+
+        .collapsible-header:hover {
+            opacity: 0.8;
+        }
+
+        .collapsible-header .title {
+            font-weight: bold;
+            color: var(--heading-color);
+        }
+
+        .collapsible-header .toggle-icon {
+            color: var(--text-muted);
+            transition: transform 0.2s ease;
+        }
+
+        .collapsible-header.expanded .toggle-icon {
+            transform: rotate(90deg);
+        }
+
+        .collapsible-content {
+            display: none;
+            padding: 0 20px 20px 20px;
+        }
+
+        .collapsible-content.expanded {
+            display: block;
+        }
+
+        .metadata-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .metadata-table th,
+        .metadata-table td {
+            padding: 8px 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .metadata-table th {
+            font-weight: bold;
+            color: var(--text-secondary);
+            width: 30%;
+        }
+
+        .metadata-table td {
+            font-family: 'Courier New', monospace;
+            color: var(--text-primary);
+            word-break: break-word;
+        }
+
+        .metadata-table tr:last-child th,
+        .metadata-table tr:last-child td {
+            border-bottom: none;
+        }
     </style>
 </head>
 <body>
@@ -426,6 +498,8 @@
                 <span id="review-progress" style="color: var(--text-primary);"></span>
             </div>
         </div>
+
+        <div id="metadata-container" style="display: none;"></div>
 
         <div id="message-container" style="display: none;">
             <div class="error-message" id="review-message"></div>
@@ -685,6 +759,8 @@
                     // Then load the current format for display
                     loadReview(currentFormat);
                 });
+                // Load metadata (only with token)
+                loadMetadata();
             } else if (data.status === 'done' || (data.status === 'error' && patchCount > 0)) {
                 // No token - just load reviews without controls bar
                 loadInlineForNavigation().then(() => {
@@ -715,6 +791,100 @@
                     console.error('Error loading inline reviews for navigation:', error);
                     inlineReviews = [];
                 });
+        }
+
+        function loadMetadata() {
+            if (!token) {
+                return;
+            }
+
+            let url = `/api/review?id=${encodeURIComponent(reviewId)}`;
+            url += `&token=${encodeURIComponent(token)}`;
+            url += '&format=metadata';
+
+            fetch(url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.review && data.review.length > 0) {
+                        displayMetadata(data.review);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading metadata:', error);
+                });
+        }
+
+        function displayMetadata(metadataArray) {
+            const container = document.getElementById('metadata-container');
+
+            // Collect all metadata from all patches
+            const allMetadata = {};
+            metadataArray.forEach((metadata, index) => {
+                if (metadata && metadata.trim()) {
+                    try {
+                        const parsed = JSON.parse(metadata);
+                        if (typeof parsed === 'object' && parsed !== null) {
+                            // Prefix keys with patch number if multiple patches
+                            if (metadataArray.length > 1) {
+                                Object.entries(parsed).forEach(([key, value]) => {
+                                    allMetadata[`Patch ${index + 1}: ${key}`] = value;
+                                });
+                            } else {
+                                Object.assign(allMetadata, parsed);
+                            }
+                        }
+                    } catch (e) {
+                        console.error(`Error parsing metadata for patch ${index + 1}:`, e);
+                    }
+                }
+            });
+
+            if (Object.keys(allMetadata).length === 0) {
+                return;
+            }
+
+            // Create collapsible box
+            const box = document.createElement('div');
+            box.className = 'collapsible-box';
+
+            const header = document.createElement('div');
+            header.className = 'collapsible-header';
+            header.innerHTML = '<span class="title">Metadata</span><span class="toggle-icon">▶</span>';
+            header.onclick = function() {
+                header.classList.toggle('expanded');
+                content.classList.toggle('expanded');
+            };
+
+            const content = document.createElement('div');
+            content.className = 'collapsible-content';
+
+            // Create table
+            const table = document.createElement('table');
+            table.className = 'metadata-table';
+
+            Object.entries(allMetadata).forEach(([key, value]) => {
+                const row = document.createElement('tr');
+                const th = document.createElement('th');
+                th.textContent = key;
+                const td = document.createElement('td');
+                td.textContent = typeof value === 'object' ? JSON.stringify(value) : String(value);
+                row.appendChild(th);
+                row.appendChild(td);
+                table.appendChild(row);
+            });
+
+            content.appendChild(table);
+            box.appendChild(header);
+            box.appendChild(content);
+
+            container.innerHTML = '';
+            container.appendChild(box);
+            container.style.display = 'block';
         }
 
         function displayReviews(reviews) {
