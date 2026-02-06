@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0
 
-"""Work tree management for AIR service"""
+"""Repository management for AIR service"""
 
 import os
 import shutil
@@ -12,131 +12,126 @@ from .log_helper import log_thread
 
 
 class WorkTreeManager:
-    """Manages git work trees for parallel review processing"""
+    """Manages git repository for review processing
+
+    This class works directly with the main git repository and creates
+    temporary copies for individual patch reviews.
+    """
 
     def __init__(self, git_tree: str, max_work_trees: int):
-        """Initialize work tree manager
+        """Initialize repository manager
 
         Args:
             git_tree: Path to the main git repository
-            max_work_trees: Maximum number of work trees to create
+            max_work_trees: Must be 1 (multiple work trees not implemented)
         """
+        if max_work_trees != 1:
+            raise NotImplementedError(
+                f"max_work_trees={max_work_trees} is not supported. "
+                "Only max_work_trees=1 is implemented."
+            )
+
         self.git_tree = git_tree
         self.max_work_trees = max_work_trees
-        self.work_trees = {}  # work_tree_id -> path
         self.lock = Lock()
 
-        # Initialize work trees
-        self._init_work_trees()
-
-    def _init_work_trees(self):
-        """Initialize work tree directories using git worktree"""
-        for i in range(1, self.max_work_trees + 1):
-            wt_name = f"wt-{i}"
-            wt_path = os.path.join(self.git_tree, wt_name)
-
-            # Check if work tree already exists
-            if not os.path.exists(wt_path):
-                log_thread(f"Creating work tree {wt_name} at {wt_path}")
-                try:
-                    # Create git worktree - this shares .git with main repo
-                    # Use detached HEAD so we can switch to any branch/commit
-                    subprocess.run(['git', 'worktree', 'add', '--detach', wt_name],
-                                 cwd=self.git_tree, check=True, capture_output=True)
-                except subprocess.CalledProcessError as e:
-                    log_thread(f"Error creating work tree {wt_name}: {e}")
-                    raise
-
-            self.work_trees[i] = wt_path
-
     def get_work_tree_path(self, wt_id: int) -> Optional[str]:
-        """Get the path to a work tree
+        """Get the path to the main repository
 
         Args:
-            wt_id: Work tree ID
+            wt_id: Work tree ID (must be 1)
 
         Returns:
-            Path to work tree or None
+            Path to main repository or None if invalid ID
         """
-        return self.work_trees.get(wt_id)
+        if wt_id != 1:
+            return None
+        return self.git_tree
 
     def get_git_dir(self, wt_id: int) -> Optional[str]:
-        """Get the path to the git metadata directory for a work tree
-
-        For worktrees, this is <main-repo>/.git/worktrees/<wt-name>/
-        This directory contains index, HEAD, index.lock, and other git metadata files.
+        """Get the path to the git metadata directory
 
         Args:
-            wt_id: Work tree ID
+            wt_id: Work tree ID (must be 1)
 
         Returns:
-            Path to git metadata directory or None if work tree doesn't exist
+            Path to .git directory or None if invalid ID
         """
-        wt_path = self.get_work_tree_path(wt_id)
-        if not wt_path:
+        if wt_id != 1:
             return None
-
-        # For worktrees, the git dir is at: <main-repo>/.git/worktrees/<wt-name>/
-        wt_name = os.path.basename(wt_path)
-        return os.path.join(self.git_tree, '.git', 'worktrees', wt_name)
+        return os.path.join(self.git_tree, '.git')
 
     def create_temp_copy(self, wt_id: int, commit_hash: str) -> str:
-        """Create a temporary copy of work tree for reviewing a specific commit
+        """Create a temporary copy of the repo for reviewing a specific commit
 
         Args:
-            wt_id: Work tree ID
+            wt_id: Work tree ID (must be 1)
             commit_hash: Commit hash to review
 
         Returns:
-            Path to temporary work tree copy
+            Path to temporary repo copy
         """
-        wt_path = self.get_work_tree_path(wt_id)
-        if not wt_path:
-            raise ValueError(f"Work tree {wt_id} not found")
+        if wt_id != 1:
+            raise ValueError(f"Invalid work tree ID: {wt_id}")
 
-        # Create temp copy with commit hash in name
-        temp_path = f"{wt_path}.{commit_hash[:12]}"
+        # Create temp copy with wt- prefix and commit hash in name
+        temp_name = f"wt-{commit_hash[:12]}"
+        temp_path = os.path.join(self.git_tree, temp_name)
 
-        log_thread(f"Creating temp work tree copy: {temp_path}")
+        log_thread(f"Creating temp repo copy: {temp_path}")
         try:
-            subprocess.run(['cp', '-a', '--reflink', wt_path, temp_path],
+            subprocess.run(['cp', '-a', '--reflink', self.git_tree, temp_path],
                          check=True, capture_output=True)
+            # Clean up any nested wt-* directories that might have been copied
+            self._cleanup_nested_copies(temp_path)
         except subprocess.CalledProcessError as e:
-            log_thread(f"Error creating temp work tree: {e}")
+            log_thread(f"Error creating temp repo copy: {e}")
             raise
 
         return temp_path
 
-    def remove_temp_copy(self, temp_path: str):
-        """Remove a temporary work tree copy
+    def _cleanup_nested_copies(self, path: str):
+        """Remove any nested wt-* directories from a repo copy
 
         Args:
-            temp_path: Path to temporary work tree
+            path: Path to the repo copy
+        """
+        for item in os.listdir(path):
+            if item.startswith('wt-'):
+                nested_path = os.path.join(path, item)
+                if os.path.isdir(nested_path):
+                    log_thread(f"Removing nested copy: {nested_path}")
+                    shutil.rmtree(nested_path)
+
+    def remove_temp_copy(self, temp_path: str):
+        """Remove a temporary repo copy
+
+        Args:
+            temp_path: Path to temporary repo copy
         """
         if os.path.exists(temp_path):
-            log_thread(f"Removing temp work tree: {temp_path}")
+            log_thread(f"Removing temp repo copy: {temp_path}")
             try:
                 shutil.rmtree(temp_path)
             except Exception as e:
-                log_thread(f"Error removing temp work tree {temp_path}: {e}")
+                log_thread(f"Error removing temp repo copy {temp_path}: {e}")
 
     def git_fetch(self, wt_id: int, remote: str) -> bool:
-        """Fetch from a remote in a work tree
+        """Fetch from a remote in the main repository
 
         Args:
-            wt_id: Work tree ID
+            wt_id: Work tree ID (must be 1)
             remote: Remote name
 
         Returns:
             True if successful, False otherwise
         """
-        wt_path = self.get_work_tree_path(wt_id)
-        if not wt_path:
+        if wt_id != 1:
             return False
 
         try:
             subprocess.run(['git', 'fetch', remote],
-                         cwd=wt_path, check=True, capture_output=True, text=True)
+                         cwd=self.git_tree, check=True, capture_output=True, text=True)
             return True
         except subprocess.CalledProcessError as e:
             log_thread(f"Error fetching remote {remote}: {e}")
@@ -145,10 +140,10 @@ class WorkTreeManager:
             return False
 
     def git_reset_hard(self, path: str, ref: str) -> bool:
-        """Reset a work tree to a specific ref
+        """Reset a repo to a specific ref
 
         Args:
-            path: Path to work tree (can be main or temp)
+            path: Path to repo (main or temp copy)
             ref: Git reference (branch, tag, or commit hash)
 
         Returns:
@@ -196,22 +191,21 @@ class WorkTreeManager:
                 return False
 
     def check_commit_exists(self, wt_id: int, commit_hash: str) -> bool:
-        """Check if a commit exists in a work tree
+        """Check if a commit exists in the repository
 
         Args:
-            wt_id: Work tree ID
+            wt_id: Work tree ID (must be 1)
             commit_hash: Commit hash to check
 
         Returns:
             True if commit exists, False otherwise
         """
-        wt_path = self.get_work_tree_path(wt_id)
-        if not wt_path:
+        if wt_id != 1:
             return False
 
         try:
             subprocess.run(['git', 'cat-file', '-e', commit_hash],
-                         cwd=wt_path, check=True, capture_output=True)
+                         cwd=self.git_tree, check=True, capture_output=True)
             return True
         except subprocess.CalledProcessError:
             return False
@@ -220,19 +214,18 @@ class WorkTreeManager:
         """Get the default branch of a remote
 
         Args:
-            wt_id: Work tree ID
+            wt_id: Work tree ID (must be 1)
             remote: Remote name
 
         Returns:
             Default branch name (e.g., 'main', 'master') or None
         """
-        wt_path = self.get_work_tree_path(wt_id)
-        if not wt_path:
+        if wt_id != 1:
             return None
 
         try:
             result = subprocess.run(['git', 'symbolic-ref', f'refs/remotes/{remote}/HEAD'],
-                                  cwd=wt_path, capture_output=True, text=True, check=True)
+                                  cwd=self.git_tree, capture_output=True, text=True, check=True)
             # Output is like 'refs/remotes/origin/main'
             ref = result.stdout.strip()
             return ref.split('/')[-1]
@@ -240,7 +233,7 @@ class WorkTreeManager:
             # Try alternate method
             try:
                 result = subprocess.run(['git', 'remote', 'show', remote],
-                                      cwd=wt_path, capture_output=True, text=True, check=True)
+                                      cwd=self.git_tree, capture_output=True, text=True, check=True)
                 for line in result.stdout.split('\n'):
                     if 'HEAD branch:' in line:
                         return line.split(':')[1].strip()
