@@ -277,6 +277,16 @@ class AirService:
             queue_len = self.queue.get_patch_count_ahead(review_id)
             result['queue-len'] = queue_len
 
+        # For owners/superusers viewing public reviews, show time until public access
+        if is_public and (is_owner or is_superuser):
+            review_date_str = metadata.get('date')
+            if review_date_str:
+                review_date = datetime.fromisoformat(review_date_str)
+                age = datetime.utcnow() - review_date
+                if age < timedelta(hours=12):
+                    hours_remaining = 12 - (age.total_seconds() / 3600)
+                    result['public_in_hours'] = round(hours_remaining, 1)
+
         # Add review results if format specified and status is done or error
         if fmt and metadata['status'] in ('done', 'error'):
             patch_count = metadata.get('patch_count', 0)

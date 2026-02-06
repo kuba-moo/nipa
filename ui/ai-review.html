@@ -406,6 +406,10 @@
                     <label>Feedback:</label>
                     <span id="review-feedback"></span>
                 </div>
+                <div class="review-info-item" id="public-in-info" style="display: none;">
+                    <label>Public in:</label>
+                    <span id="review-public-in"></span>
+                </div>
             </div>
             <div id="progress-info" style="margin-top: 15px; display: none;">
                 <label style="font-weight: bold; color: var(--text-secondary);">Progress:</label>
@@ -615,6 +619,19 @@
             if (data.feedback) {
                 document.getElementById('feedback-info').style.display = 'block';
                 document.getElementById('review-feedback').textContent = feedbackLabels[data.feedback] || data.feedback;
+            }
+
+            // Show time until public access (for owners viewing public reviews)
+            if (data.public_in_hours !== undefined) {
+                document.getElementById('public-in-info').style.display = 'block';
+                const hours = data.public_in_hours;
+                let timeText;
+                if (hours < 1) {
+                    timeText = `${Math.round(hours * 60)} minutes`;
+                } else {
+                    timeText = `${hours.toFixed(1)} hours`;
+                }
+                document.getElementById('review-public-in').textContent = timeText;
             }
 
             // Message (error or warning)
