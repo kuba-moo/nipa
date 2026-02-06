@@ -78,30 +78,39 @@ class WorkTreeManager:
         temp_name = f"wt-{commit_hash[:12]}"
         temp_path = os.path.join(self.git_tree, temp_name)
 
+        # To avoid recursive copy (copying into itself), we first copy to a
+        # sibling directory, then move it inside. This preserves reflinks
+        # since the move is just a rename on the same filesystem.
+        parent_dir = os.path.dirname(self.git_tree)
+        staging_path = os.path.join(parent_dir, temp_name)
+
         log_thread(f"Creating temp repo copy: {temp_path}")
         try:
-            subprocess.run(['cp', '-a', '--reflink', self.git_tree, temp_path],
-                         check=True, capture_output=True)
-            # Clean up any nested wt-* directories that might have been copied
-            self._cleanup_nested_copies(temp_path)
+            # Step 1: Copy to sibling location (avoids recursion)
+            subprocess.run([
+                'cp', '-a', '--reflink=auto',
+                self.git_tree,
+                staging_path
+            ], check=True, capture_output=True)
+
+            # Step 2: Move into the git tree (just a rename, preserves reflinks)
+            shutil.move(staging_path, temp_path)
         except subprocess.CalledProcessError as e:
             log_thread(f"Error creating temp repo copy: {e}")
+            # Clean up staging path if it exists
+            if os.path.exists(staging_path):
+                shutil.rmtree(staging_path)
+            raise
+        except Exception as e:
+            log_thread(f"Error moving temp repo copy: {e}")
+            # Clean up both paths if they exist
+            if os.path.exists(staging_path):
+                shutil.rmtree(staging_path)
+            if os.path.exists(temp_path):
+                shutil.rmtree(temp_path)
             raise
 
         return temp_path
-
-    def _cleanup_nested_copies(self, path: str):
-        """Remove any nested wt-* directories from a repo copy
-
-        Args:
-            path: Path to the repo copy
-        """
-        for item in os.listdir(path):
-            if item.startswith('wt-'):
-                nested_path = os.path.join(path, item)
-                if os.path.isdir(nested_path):
-                    log_thread(f"Removing nested copy: {nested_path}")
-                    shutil.rmtree(nested_path)
 
     def remove_temp_copy(self, temp_path: str):
         """Remove a temporary repo copy
