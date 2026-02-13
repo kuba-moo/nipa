@@ -206,18 +206,20 @@ class AirService:
         if fmt == 'json' and not is_superuser:
             return None
 
-        # Delay public access to review content by 20 hours
+        # Delay public access to review content
         # Users must authenticate to access fresh public reviews
         if is_public and not (is_owner or is_superuser) and fmt:
-            review_date_str = metadata.get('date')
-            if review_date_str:
-                review_date = datetime.fromisoformat(review_date_str)
-                age = datetime.utcnow() - review_date
-                if age < timedelta(hours=20):
-                    hours_remaining = 20 - (age.total_seconds() / 3600)
-                    raise ValueError(
-                        f"Public read access available in {hours_remaining:.1f} hours."
-                    )
+            delay_hours = self.token_auth.get_public_read_delay(review_token) if self.token_auth else 20
+            if delay_hours > 0:
+                review_date_str = metadata.get('date')
+                if review_date_str:
+                    review_date = datetime.fromisoformat(review_date_str)
+                    age = datetime.utcnow() - review_date
+                    if age < timedelta(hours=delay_hours):
+                        hours_remaining = delay_hours - (age.total_seconds() / 3600)
+                        raise ValueError(
+                            f"Public read access available in {hours_remaining:.1f} hours."
+                        )
 
         # Build response
         result = {
@@ -279,13 +281,15 @@ class AirService:
 
         # For owners/superusers viewing public reviews, show time until public access
         if is_public and (is_owner or is_superuser):
-            review_date_str = metadata.get('date')
-            if review_date_str:
-                review_date = datetime.fromisoformat(review_date_str)
-                age = datetime.utcnow() - review_date
-                if age < timedelta(hours=20):
-                    hours_remaining = 20 - (age.total_seconds() / 3600)
-                    result['public_in_hours'] = round(hours_remaining, 1)
+            delay_hours = self.token_auth.get_public_read_delay(review_token) if self.token_auth else 20
+            if delay_hours > 0:
+                review_date_str = metadata.get('date')
+                if review_date_str:
+                    review_date = datetime.fromisoformat(review_date_str)
+                    age = datetime.utcnow() - review_date
+                    if age < timedelta(hours=delay_hours):
+                        hours_remaining = delay_hours - (age.total_seconds() / 3600)
+                        result['public_in_hours'] = round(hours_remaining, 1)
 
         # Add review results if format specified and status is done or error
         if fmt and metadata['status'] in ('done', 'error'):

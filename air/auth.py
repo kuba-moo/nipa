@@ -34,6 +34,7 @@ class TokenAuth:
                             'date': token_info.get('date', ''),
                             'superuser': token_info.get('superuser', False),
                             'public_read': token_info.get('public_read', False),
+                            'public_read_delay': token_info.get('public_read_delay', 20),
                             'allowed_sources': token_info.get('allowed_sources', None)
                         }
         except FileNotFoundError:
@@ -77,6 +78,19 @@ class TokenAuth:
         if token not in self.tokens:
             return False
         return self.tokens[token].get('public_read', False)
+
+    def get_public_read_delay(self, token: str) -> int:
+        """Get public read delay in hours for a token
+
+        Args:
+            token: Token string to check
+
+        Returns:
+            Delay in hours before public read is available (default 20)
+        """
+        if token not in self.tokens:
+            return 20
+        return self.tokens[token].get('public_read_delay', 20)
 
     def is_source_allowed(self, token: str, source: str) -> bool:
         """Check if a submission source is allowed for this token
@@ -149,6 +163,9 @@ class TokenAuth:
                 token_entry['superuser'] = True
             if info.get('public_read'):
                 token_entry['public_read'] = True
+                delay = info.get('public_read_delay', 20)
+                if delay != 20:
+                    token_entry['public_read_delay'] = delay
             if info.get('allowed_sources'):
                 token_entry['allowed_sources'] = info['allowed_sources']
             token_list.append(token_entry)
