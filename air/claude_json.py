@@ -73,13 +73,16 @@ def convert_json_to_markdown(json_path: str, markdown_path: str):
 def extract_cost_from_review(json_path: str) -> float:
     """Extract total cost from Claude stream-json output file.
 
+    The modelUsage objects in the stream are cumulative running totals,
+    so we only use the last one and sum the costUSD across models.
+
     Args:
         json_path: Path to input JSON file
 
     Returns:
         Total cost in USD, or 0.0 if no cost data found
     """
-    total_cost = 0.0
+    last_model_usage = None
 
     try:
         with open(json_path, 'r') as f:
@@ -91,11 +94,8 @@ def extract_cost_from_review(json_path: str) -> float:
                 try:
                     data = json.loads(line)
 
-                    if not isinstance(data.get('modelUsage'), dict):
-                        continue
-                    for usage in data['modelUsage'].values():
-                        if 'costUSD' in usage:
-                            total_cost += float(usage['costUSD'])
+                    if isinstance(data.get('modelUsage'), dict):
+                        last_model_usage = data['modelUsage']
 
                 except (json.JSONDecodeError, ValueError, Exception):
                     # Silently skip malformed lines or invalid cost values
@@ -105,4 +105,11 @@ def extract_cost_from_review(json_path: str) -> float:
         # File doesn't exist, return 0.0
         pass
 
+    if not last_model_usage:
+        return 0.0
+
+    total_cost = 0.0
+    for usage in last_model_usage.values():
+        if 'costUSD' in usage:
+            total_cost += float(usage['costUSD'])
     return total_cost
