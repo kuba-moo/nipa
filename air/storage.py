@@ -157,6 +157,19 @@ class ReviewStorage:
                 self.reviews[review_id]['patch_count'] = count
                 self.save_metadata()
 
+    def set_commit_hashes(self, review_id: str, hashes: list):
+        """Set the list of commit hashes for a review
+
+        Args:
+            review_id: Review ID
+            hashes: List of git commit hashes
+        """
+        with self.lock:
+            self.load_metadata()
+            if review_id in self.reviews:
+                self.reviews[review_id]['commit_hashes'] = hashes
+                self.save_metadata()
+
     def set_llm_start_time(self, review_id: str):
         """Set the LLM start timestamp for a review
 

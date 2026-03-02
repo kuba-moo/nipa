@@ -147,6 +147,7 @@ class SetupWorker:
 
         # Update patch count
         self.storage.set_patch_count(review_id, len(commit_hashes))
+        self.storage.set_commit_hashes(review_id, commit_hashes)
 
         # Run semcode indexing
         if not self.config.skip_semcode:
