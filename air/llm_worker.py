@@ -232,7 +232,7 @@ class LLMWorker:
         if ctx.llm_mode == 'orc':
             return f"""
             Current directory is the root of a Linux Kernel git repository.
-            Read the prompt from {ctx.full_prompt_path} and run it on the {ctx.commit_hash} commit.
+            Read the prompt from {ctx.full_prompt_path} and run it on the {ctx.commit_hash} commit, which is part of a series with git range {ctx.git_range}.
             """
         else:
             return f"""
