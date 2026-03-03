@@ -605,7 +605,7 @@ class AirService:
 
         Args:
             review_id: Review ID
-            feedback: Feedback value (emailed, false-positive, false-negative)
+            feedback: Feedback value (emailed, false-positive, false-negative, nitpick)
 
         Returns:
             True if successful, False if review not found

@@ -1807,7 +1807,8 @@
                         hasOutput: 0,
                         emailed: 0,
                         'false-positive': 0,
-                        'false-negative': 0
+                        'false-negative': 0,
+                        'nitpick': 0
                     };
                 }
 
@@ -1829,16 +1830,17 @@
                 const windowStart = Math.max(0, idx - 5);
                 const windowBuckets = allBuckets.slice(windowStart, idx + 1);
 
-                let total = 0, hasOutput = 0, emailed = 0, falsePositive = 0, falseNegative = 0;
+                let total = 0, hasOutput = 0, emailed = 0, falsePositive = 0, falseNegative = 0, nitpick = 0;
                 windowBuckets.forEach(b => {
                     total += dataByBucket[b].total;
                     hasOutput += dataByBucket[b].hasOutput || 0;
                     emailed += dataByBucket[b].emailed || 0;
                     falsePositive += dataByBucket[b]['false-positive'] || 0;
                     falseNegative += dataByBucket[b]['false-negative'] || 0;
+                    nitpick += dataByBucket[b]['nitpick'] || 0;
                 });
 
-                const withFeedback = emailed + falsePositive + falseNegative;
+                const withFeedback = emailed + falsePositive + falseNegative + nitpick;
 
                 return {
                     bucket: bucket,
@@ -1850,10 +1852,12 @@
                     emailedPctAll: total > 0 ? (emailed / total) * 100 : null,
                     fpPctAll: total > 0 ? (falsePositive / total) * 100 : null,
                     fnPctAll: total > 0 ? (falseNegative / total) * 100 : null,
+                    nitpickPctAll: total > 0 ? (nitpick / total) * 100 : null,
                     // Percentages of reviews with feedback (for solid lines)
                     emailedPctFeedback: withFeedback > 0 ? (emailed / withFeedback) * 100 : null,
                     fpPctFeedback: withFeedback > 0 ? (falsePositive / withFeedback) * 100 : null,
-                    fnPctFeedback: withFeedback > 0 ? (falseNegative / withFeedback) * 100 : null
+                    fnPctFeedback: withFeedback > 0 ? (falseNegative / withFeedback) * 100 : null,
+                    nitpickPctFeedback: withFeedback > 0 ? (nitpick / withFeedback) * 100 : null
                 };
             });
 
@@ -1862,9 +1866,11 @@
             const emailedAllData = rollingData.map(d => ({ x: d.bucket, y: d.emailedPctAll }));
             const fpAllData = rollingData.map(d => ({ x: d.bucket, y: d.fpPctAll }));
             const fnAllData = rollingData.map(d => ({ x: d.bucket, y: d.fnPctAll }));
+            const nitpickAllData = rollingData.map(d => ({ x: d.bucket, y: d.nitpickPctAll }));
             const emailedFeedbackData = rollingData.map(d => ({ x: d.bucket, y: d.emailedPctFeedback }));
             const fpFeedbackData = rollingData.map(d => ({ x: d.bucket, y: d.fpPctFeedback }));
             const fnFeedbackData = rollingData.map(d => ({ x: d.bucket, y: d.fnPctFeedback }));
+            const nitpickFeedbackData = rollingData.map(d => ({ x: d.bucket, y: d.nitpickPctFeedback }));
 
             const ctx = document.getElementById('feedbackChart');
 
@@ -1911,6 +1917,16 @@
                     spanGaps: false,
                     pointRadius: 0
                 },
+                {
+                    label: 'Ignored/Nitpick (% of categorized)',
+                    data: nitpickFeedbackData,
+                    borderColor: '#17a2b8',
+                    backgroundColor: 'rgba(23, 162, 184, 0.1)',
+                    tension: 0.1,
+                    fill: false,
+                    spanGaps: false,
+                    pointRadius: 0
+                },
                 // Dotted lines - % of all reviews
                 {
                     label: 'Emailed (% of all)',
@@ -1939,6 +1955,17 @@
                     data: fnAllData,
                     borderColor: '#ffc107',
                     backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                    tension: 0.1,
+                    fill: false,
+                    spanGaps: false,
+                    borderDash: [5, 5],
+                    pointRadius: 0
+                },
+                {
+                    label: 'Ignored/Nitpick (% of all)',
+                    data: nitpickAllData,
+                    borderColor: '#17a2b8',
+                    backgroundColor: 'rgba(23, 162, 184, 0.1)',
                     tension: 0.1,
                     fill: false,
                     spanGaps: false,
@@ -2436,7 +2463,8 @@
                     const feedbackLabels = {
                         'emailed': '📧 Emailed',
                         'false-positive': '❌ False Positive',
-                        'false-negative': '⚠️ False Negative'
+                        'false-negative': '⚠️ False Negative',
+                        'nitpick': '💬 Ignored (nitpick)'
                     };
                     adminFeedbackBadge = `<span class="feedback-badge">${feedbackLabels[review.feedback] || review.feedback}</span>`;
                 }

@@ -515,6 +515,7 @@
                     <option value="emailed">Emailed</option>
                     <option value="false-positive">False Positive</option>
                     <option value="false-negative">False Negative</option>
+                    <option value="nitpick">Ignored (nitpick)</option>
                 </select>
             </div>
             <div class="format-selector">
@@ -696,7 +697,8 @@
             const feedbackLabels = {
                 'emailed': '📧 Emailed',
                 'false-positive': '❌ False Positive',
-                'false-negative': '⚠️ False Negative'
+                'false-negative': '⚠️ False Negative',
+                'nitpick': '💬 Ignored (nitpick)'
             };
 
             // Always show feedback in info section if it exists

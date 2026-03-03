@@ -195,7 +195,7 @@ def create_app(config_path=None, skip_semcode=False, keep_temp_trees=False):
             return jsonify({'error': 'Missing feedback parameter'}), 400
 
         # Validate feedback value
-        valid_values = ('emailed', 'false-positive', 'false-negative')
+        valid_values = ('emailed', 'false-positive', 'false-negative', 'nitpick')
         if feedback not in valid_values:
             return jsonify({'error': f'Invalid feedback value. Must be one of: {valid_values}'}), 400
 

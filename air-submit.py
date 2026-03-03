@@ -185,7 +185,7 @@ def set_feedback(url: str, token: Optional[str], review_id: str, feedback: str) 
         url: AIR service URL
         token: API token (optional for public reviews)
         review_id: Review ID
-        feedback: Feedback value (emailed, false-positive, false-negative)
+        feedback: Feedback value (emailed, false-positive, false-negative, nitpick)
 
     Returns:
         True if successful
@@ -341,7 +341,7 @@ Configuration file:
                        help='Git commit hash or range (e.g., abc123 or abc123..def456)')
     parser.add_argument('--review-id', metavar='ID',
                        help='Existing review ID to check (skip submission)')
-    parser.add_argument('--feedback', choices=['emailed', 'false-positive', 'false-negative'],
+    parser.add_argument('--feedback', choices=['emailed', 'false-positive', 'false-negative', 'nitpick'],
                        help='Set feedback for a review (requires --review-id)')
     parser.add_argument('patches', nargs='*', metavar='PATCH_FILE',
                        help='Patch files to submit')

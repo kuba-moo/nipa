@@ -416,12 +416,12 @@ class ReviewStorage:
 
         Args:
             review_id: Review ID
-            feedback: Feedback value (emailed, false-positive, false-negative)
+            feedback: Feedback value (emailed, false-positive, false-negative, nitpick)
 
         Returns:
             True if successful, False if review not found
         """
-        valid_values = ('emailed', 'false-positive', 'false-negative')
+        valid_values = ('emailed', 'false-positive', 'false-negative', 'nitpick')
         if feedback not in valid_values:
             raise ValueError(f"Invalid feedback value. Must be one of: {valid_values}")
 
