@@ -72,6 +72,7 @@ class ReviewStorage:
                 'start-llm': None,
                 'end': None,
                 'patchwork_series_id': request_data.get('patchwork_series_id'),
+                'pw_project': request_data.get('pw_project'),
                 'hash': request_data.get('hash'),
                 'tree': request_data.get('tree'),
                 'branch': request_data.get('branch'),

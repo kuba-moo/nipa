@@ -131,6 +131,20 @@ class AirService:
             raise ValueError(f"Invalid llm_mode: {llm_mode}. Must be 'classic' or 'orc'")
         data['llm_mode'] = llm_mode
 
+        # Fetch patchwork series info before creating review so metadata is populated
+        if has_patchwork and self.patchwork:
+            try:
+                series = self.patchwork.get('series', data['patchwork_series_id'])
+                data['patch_count'] = len(series.get('patches', []))
+                data['pw_project'] = series.get('project', {}).get('link_name')
+            except Exception:
+                data['patch_count'] = 1
+        elif has_patches:
+            data['patch_count'] = len(data['patches'])
+        elif has_hash:
+            # For hash/range, we'll update this after processing
+            data['patch_count'] = 1
+
         print(f"[submit_review] Creating review entry for tree: {data['tree']}")
         # Create review entry
         review_id = self.storage.create_review(token, data)
@@ -152,18 +166,9 @@ class AirService:
         elif has_hash:
             request['hash'] = data['hash']
 
-        # Estimate patch count for queue position calculation
-        if has_patchwork and self.patchwork:
-            try:
-                series = self.patchwork.get('series', data['patchwork_series_id'])
-                request['patch_count'] = len(series.get('patches', []))
-            except Exception:
-                request['patch_count'] = 1
-        elif has_patches:
-            request['patch_count'] = len(data['patches'])
-        elif has_hash:
-            # For hash/range, we'll update this after processing
-            request['patch_count'] = 1
+        request['patch_count'] = data.get('patch_count', 1)
+        if data.get('pw_project'):
+            request['pw_project'] = data['pw_project']
 
         # Add to queue
         print(f"[submit_review] Adding to queue: {review_id}")
@@ -231,6 +236,9 @@ class AirService:
 
         if metadata.get('patchwork_series_id'):
             result['patchwork_series_id'] = metadata['patchwork_series_id']
+
+        if metadata.get('pw_project'):
+            result['pw_project'] = metadata['pw_project']
 
         if metadata.get('hash'):
             result['hash'] = metadata['hash']
@@ -394,6 +402,9 @@ class AirService:
             # Add patchwork series ID if present
             if r.get('patchwork_series_id'):
                 review_info['patchwork_series_id'] = r['patchwork_series_id']
+
+            if r.get('pw_project'):
+                review_info['pw_project'] = r['pw_project']
 
             # Add hash if present
             if r.get('hash'):
