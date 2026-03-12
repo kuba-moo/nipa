@@ -233,6 +233,7 @@ class LLMWorker:
             return f"""
             Current directory is the root of a Linux Kernel git repository.
             Read the prompt from {ctx.full_prompt_path} and run it on the {ctx.commit_hash} commit, which is part of a series with git range {ctx.git_range}.
+            Skip the "Clean up before execution" step from orc.md
             """
         else:
             return f"""
