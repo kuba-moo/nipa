@@ -24,6 +24,7 @@ class ReviewStorage:
         self.results_path = results_path
         self.metadata_path = os.path.join(results_path, 'metadata.json')
         self.queue_path = os.path.join(results_path, 'queue.json')
+        self.feedback_log_path = os.path.join(results_path, 'feedback-log.json')
         self.lock = Lock()
 
         # In-memory metadata
@@ -433,7 +434,75 @@ class ReviewStorage:
 
             self.reviews[review_id]['feedback'] = feedback
             self.save_metadata()
-            return True
+
+        self.append_feedback_log(review_id, feedback)
+        return True
+
+    def _load_feedback_log(self) -> Dict:
+        """Load feedback log from disk
+
+        Returns:
+            Dict with 'next_id' and 'entries' keys
+        """
+        try:
+            with open(self.feedback_log_path, 'r') as f:
+                return json.load(f)
+        except FileNotFoundError:
+            return {'next_id': 1, 'entries': []}
+
+    def _save_feedback_log(self, log: Dict):
+        """Save feedback log to disk"""
+        with open(self.feedback_log_path, 'w') as f:
+            json.dump(log, f, indent=2)
+
+    def append_feedback_log(self, review_id: str, feedback: str):
+        """Append a feedback entry to the feedback log
+
+        Removes any existing entry for the same review_id (feedback flip),
+        assigns a new monotonic ID, and trims to 100 entries.
+
+        Args:
+            review_id: Review ID
+            feedback: Feedback value
+        """
+        with self.lock:
+            self.load_metadata()
+            metadata = self.reviews.get(review_id, {})
+
+            log = self._load_feedback_log()
+
+            # Remove existing entry for this review (feedback flip)
+            log['entries'] = [e for e in log['entries']
+                              if e['review_id'] != review_id]
+
+            # Build new entry
+            entry = {
+                'id': log['next_id'],
+                'review_id': review_id,
+                'token': metadata.get('token', ''),
+                'feedback': feedback,
+                'date': datetime.utcnow().isoformat(),
+            }
+            if metadata.get('patchwork_series_id'):
+                entry['patchwork_series_id'] = metadata['patchwork_series_id']
+
+            log['entries'].append(entry)
+            log['next_id'] += 1
+
+            # Trim to 100 most recent entries
+            if len(log['entries']) > 100:
+                log['entries'] = log['entries'][-100:]
+
+            self._save_feedback_log(log)
+
+    def get_feedback_log(self) -> List[Dict]:
+        """Get the feedback log entries
+
+        Returns:
+            List of feedback entry dicts, ordered by ID (oldest first)
+        """
+        log = self._load_feedback_log()
+        return log['entries']
 
     def delete_review(self, review_id: str) -> bool:
         """Delete a review from metadata

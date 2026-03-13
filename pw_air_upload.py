@@ -116,6 +116,7 @@ class AirPatchworkSync:
 
         # Load state
         self.uploaded_reviews = self.load_state()
+        self.feedback_cursor = self.load_feedback_cursor()
 
     def load_state(self) -> set:
         """Load set of already uploaded review IDs from state file
@@ -134,14 +135,31 @@ class AirPatchworkSync:
             print(f"Error loading state file: {e}")
             return set()
 
+    def load_feedback_cursor(self) -> int:
+        """Load feedback cursor from state file
+
+        Returns:
+            Highest feedback log ID that has been processed
+        """
+        if not os.path.exists(self.state_file):
+            return 0
+
+        try:
+            with open(self.state_file, 'r', encoding='utf-8') as f:
+                state = json.load(f)
+                return state.get('feedback_cursor', 0)
+        except Exception as e:
+            return 0
+
     def save_state(self, uploaded_reviews: set):
-        """Save set of uploaded review IDs to state file
+        """Save state to state file
 
         Args:
             uploaded_reviews: Set of review IDs that have been uploaded
         """
         state = {
             'uploaded_reviews': list(uploaded_reviews),
+            'feedback_cursor': self.feedback_cursor,
             'last_update': datetime.now(UTC).isoformat(),
             'count': len(uploaded_reviews)
         }
@@ -290,6 +308,83 @@ class AirPatchworkSync:
 
         return success
 
+    def fetch_feedback_log(self) -> List[Dict]:
+        """Fetch feedback log from AIR, scoped to our token
+
+        Returns:
+            List of feedback entry dictionaries
+        """
+        try:
+            url = f"{self.air_url}/api/feedback-log?token={self.air_token}"
+            response = requests.get(url, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+            return data.get('feedback', [])
+        except Exception as e:
+            print(f"Error fetching feedback log from AIR: {e}")
+            return []
+
+    def process_feedback_log(self):
+        """Process feedback log and update Patchwork checks"""
+        entries = self.fetch_feedback_log()
+        if not entries:
+            return
+
+        # Feedback values that require PW check updates
+        feedback_actions = {
+            'false-positive': ('success', 'AI review marked as false positive'),
+            'nitpick': ('success', 'AI review marked as nit pick'),
+            'emailed': ('fail', 'AI review confirmed, feedback emailed'),
+        }
+
+        max_id = self.feedback_cursor
+        for entry in entries:
+            entry_id = entry.get('id', 0)
+            if entry_id <= self.feedback_cursor:
+                continue
+
+            review_id = entry.get('review_id')
+            feedback = entry.get('feedback')
+            pw_series_id = entry.get('patchwork_series_id')
+
+            if entry_id > max_id:
+                max_id = entry_id
+
+            if not review_id or not feedback or not pw_series_id:
+                continue
+
+            if feedback not in feedback_actions:
+                continue
+
+            state, desc = feedback_actions[feedback]
+            print(f"Processing feedback for review {review_id}: {feedback} -> {state}")
+
+            check_url = f"{self.air_server}/ai-review.html?id={review_id}"
+
+            try:
+                pw_series = PatchworkSeries(self.patchwork, pw_series_id,
+                                            self.check_name)
+            except Exception as e:
+                print(f"  Error fetching series {pw_series_id}: {e}")
+                continue
+
+            if not pw_series.patches:
+                print(f"  Warning: Series {pw_series_id} has no patches")
+                continue
+
+            try:
+                for i, patch in enumerate(pw_series.patches):
+                    patch_id = patch['id']
+                    self.patchwork.post_check(patch=patch_id, name=self.check_name,
+                                             state=state, url=check_url, desc=desc)
+                print(f"  Updated {len(pw_series.patches)} patches to {state}")
+            except Exception as e:
+                print(f"  Error updating checks for series {pw_series_id}: {e}")
+
+        if max_id > self.feedback_cursor:
+            self.feedback_cursor = max_id
+            self.save_state(self.uploaded_reviews)
+
     def run_once(self):
         """Run one sync iteration"""
         print("Polling for new reviews...")
@@ -352,6 +447,9 @@ class AirPatchworkSync:
         # Save state
         self.save_state(self.uploaded_reviews)
         print(f"State updated: tracking {len(self.uploaded_reviews)} uploaded reviews")
+
+        # Process feedback log (update PW checks for false-positive/emailed reviews)
+        self.process_feedback_log()
 
     def run(self):
         """Run sync service continuously"""

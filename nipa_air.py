@@ -177,6 +177,24 @@ def create_app(config_path=None, skip_semcode=False, keep_temp_trees=False):
             traceback.print_exc()
             return jsonify({'error': 'Internal server error'}), 500
 
+    @app.route('/api/feedback-log', methods=['GET'])
+    def get_feedback_log():
+        """Get recent feedback entries (revocation list), scoped to token"""
+        token = request.args.get('token')
+        if not token:
+            return jsonify({'error': 'Missing token parameter'}), 400
+        if not token_auth.validate_token(token):
+            return jsonify({'error': 'Invalid token'}), 401
+
+        try:
+            entries = service.get_feedback_log(token)
+            return jsonify({'feedback': entries}), 200
+        except Exception as e:
+            print(f"Error getting feedback log: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({'error': 'Internal server error'}), 500
+
     @app.route('/api/review/feedback', methods=['POST'])
     def set_feedback():
         """Set feedback for a review

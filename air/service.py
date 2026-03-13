@@ -458,6 +458,21 @@ class AirService:
 
         return result
 
+    def get_feedback_log(self, token: str) -> List[Dict]:
+        """Get recent feedback entries for the revocation list
+
+        Returns feedback log entries owned by the given token, ordered by
+        monotonic ID so consumers can track what they've already processed.
+
+        Args:
+            token: Authentication token (scopes results to this token's reviews)
+
+        Returns:
+            List of feedback entry dictionaries
+        """
+        entries = self.storage.get_feedback_log()
+        return [e for e in entries if e.get('token') == token]
+
     def get_status(self) -> Dict:
         """Get service status
 
