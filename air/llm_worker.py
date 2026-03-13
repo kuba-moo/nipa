@@ -346,25 +346,23 @@ class LLMWorker:
 
     def _collect_review_outputs(self, ctx: ReviewContext) -> bool:
         """Copy review outputs from work tree to patch directory"""
-        # Copy review-inline.txt if created
-        inline_src = os.path.join(ctx.work_path, 'review-inline.txt')
-        if os.path.exists(inline_src):
-            inline_dst = os.path.join(ctx.patch_dir, 'review-inline.txt')
+        # Copy all review-* files and review-* directories from work tree root
+        for entry in os.listdir(ctx.work_path):
+            if not entry.startswith('review-'):
+                continue
+            src = os.path.join(ctx.work_path, entry)
+            dst = os.path.join(ctx.patch_dir, entry)
             try:
-                shutil.copy(inline_src, inline_dst)
-                log_thread(f"Copied review-inline.txt for {ctx.review_id} patch {ctx.patch_num}")
+                if os.path.isdir(src):
+                    if os.path.exists(dst):
+                        shutil.rmtree(dst)
+                    shutil.copytree(src, dst)
+                    log_thread(f"Copied directory {entry} for {ctx.review_id} patch {ctx.patch_num}")
+                else:
+                    shutil.copy(src, dst)
+                    log_thread(f"Copied {entry} for {ctx.review_id} patch {ctx.patch_num}")
             except Exception as e:
-                log_thread(f"Warning: Failed to copy review-inline.txt: {e}")
-
-        # Copy review-metadata.json if created
-        metadata_src = os.path.join(ctx.work_path, 'review-metadata.json')
-        if os.path.exists(metadata_src):
-            metadata_dst = os.path.join(ctx.patch_dir, 'review-metadata.json')
-            try:
-                shutil.copy(metadata_src, metadata_dst)
-                log_thread(f"Copied review-metadata.json for {ctx.review_id} patch {ctx.patch_num}")
-            except Exception as e:
-                log_thread(f"Warning: Failed to copy review-metadata.json: {e}")
+                log_thread(f"Warning: Failed to copy {entry}: {e}")
 
         # Convert JSON to markdown
         try:
