@@ -348,7 +348,7 @@ class LLMWorker:
         """Copy review outputs from work tree to patch directory"""
         # Copy all review-* files and review-* directories from work tree root
         for entry in os.listdir(ctx.work_path):
-            if not entry.startswith('review-'):
+            if not entry.startswith('review-') or entry == 'review-prompts':
                 continue
             src = os.path.join(ctx.work_path, entry)
             dst = os.path.join(ctx.patch_dir, entry)
