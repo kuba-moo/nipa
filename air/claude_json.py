@@ -11,6 +11,7 @@ Based on patterns from:
 import json
 import os
 import re
+import shutil
 from typing import Iterator, List, Tuple
 
 
@@ -72,9 +73,9 @@ def parse_stream(stream: Iterator[str]) -> Tuple[str, List[dict]]:
             if delta_text:
                 text_parts.append(delta_text)
 
-        # Extract agent info from toolUseResult on user messages
+        # Extract agent info from tool_use_result on user messages
         elif msg_type == 'user':
-            tur = data.get('toolUseResult')
+            tur = data.get('tool_use_result')
             if isinstance(tur, dict) and tur.get('agentId'):
                 agent = {}
                 for key in ('agentId', 'description', 'prompt',
@@ -96,13 +97,17 @@ def _process_agent_outputs(agents: List[dict], output_dir: str):
 
         name = _sanitize_name(description)
 
-        # Write agent markdown
-        md_path = _unique_path(output_dir, name, 'md')
+        # Save the raw stream-json
+        json_path = _unique_path(output_dir, name, 'json')
         try:
-            with open(output_file, 'r') as f:
-                agent_text, sub_agents = parse_stream(f)
+            shutil.copy(output_file, json_path)
         except (FileNotFoundError, Exception):
             continue
+
+        # Parse and write markdown
+        md_path = _unique_path(output_dir, name, 'md')
+        with open(json_path, 'r') as f:
+            agent_text, sub_agents = parse_stream(f)
 
         with open(md_path, 'w') as f:
             f.write(agent_text)
