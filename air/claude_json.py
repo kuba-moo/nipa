@@ -65,6 +65,10 @@ def parse_stream(stream: Iterator[str]) -> Tuple[str, List[dict]]:
                 if content_item.get('type') == 'text':
                     text = content_item.get('text', '')
                     if text:
+                        # The lines are always missing an end which
+                        # often breaks markdown
+                        if text_parts:
+                            text_parts.append('\n')
                         text_parts.append(text)
 
         # Handle streaming deltas
