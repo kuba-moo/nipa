@@ -9,19 +9,41 @@ Based on patterns from:
 """
 
 import json
-from typing import Iterator
+import os
+import re
+from typing import Iterator, List, Tuple
 
 
-def extract_text_from_stream(stream: Iterator[str]) -> str:
-    """Extract plain text from Claude's stream-json format.
+def _sanitize_name(description: str) -> str:
+    """Sanitize a description string for use as a filename.
 
-    Args:
-        stream: Iterator of JSON lines (file object or list of strings)
+    Lowercases and replaces any character not in a-z0-9- with underscore.
+    """
+    return re.sub(r'[^a-z0-9-]', '_', description.lower())
+
+
+def _unique_path(directory: str, stem: str, ext: str) -> str:
+    """Return a unique file path, appending -1, -2, etc. if needed."""
+    path = os.path.join(directory, f'{stem}.{ext}')
+    if not os.path.exists(path):
+        return path
+    num = 1
+    while True:
+        path = os.path.join(directory, f'{stem}-{num}.{ext}')
+        if not os.path.exists(path):
+            return path
+        num += 1
+
+
+def parse_stream(stream: Iterator[str]) -> Tuple[str, List[dict]]:
+    """Parse Claude's stream-json format, extracting text and agent info.
 
     Returns:
-        Extracted plain text from Claude's response
+        (text, agents) where text is the concatenated assistant text and
+        agents is a list of agent info dicts from toolUseResult fields.
     """
     text_parts = []
+    agents = []
 
     for line in stream:
         line = line.strip()
@@ -31,43 +53,94 @@ def extract_text_from_stream(stream: Iterator[str]) -> str:
 
         try:
             data = json.loads(line)
-
-            # Extract text from assistant messages
-            if (data.get('type') == 'assistant' and
-                'message' in data and
-                'content' in data['message']):
-
-                for content_item in data['message']['content']:
-                    if content_item.get('type') == 'text':
-                        text = content_item.get('text', '')
-                        if text:
-                            text_parts.append(text)
-
-            # Handle streaming deltas (if Claude uses them)
-            elif data.get('type') == 'content_block_delta':
-                delta_text = data.get('delta', {}).get('text', '')
-                if delta_text:
-                    text_parts.append(delta_text)
-
         except (json.JSONDecodeError, Exception):
-            # Silently skip malformed lines
             continue
 
-    return ''.join(text_parts)
+        msg_type = data.get('type')
+
+        # Extract text from assistant messages
+        if msg_type == 'assistant' and 'message' in data:
+            for content_item in data['message'].get('content', []):
+                if content_item.get('type') == 'text':
+                    text = content_item.get('text', '')
+                    if text:
+                        text_parts.append(text)
+
+        # Handle streaming deltas
+        elif msg_type == 'content_block_delta':
+            delta_text = data.get('delta', {}).get('text', '')
+            if delta_text:
+                text_parts.append(delta_text)
+
+        # Extract agent info from toolUseResult on user messages
+        elif msg_type == 'user':
+            tur = data.get('toolUseResult')
+            if isinstance(tur, dict) and tur.get('agentId'):
+                agent = {}
+                for key in ('agentId', 'description', 'prompt',
+                            'outputFile', 'status'):
+                    if key in tur:
+                        agent[key] = tur[key]
+                agents.append(agent)
+
+    return ''.join(text_parts), agents
 
 
-def convert_json_to_markdown(json_path: str, markdown_path: str):
-    """Convert Claude stream-json output file to markdown.
+def _process_agent_outputs(agents: List[dict], output_dir: str):
+    """Recursively process agent outputs into the output directory."""
+    for agent in agents:
+        description = agent.get('description')
+        output_file = agent.get('outputFile')
+        if not description or not output_file:
+            continue
+
+        name = _sanitize_name(description)
+
+        # Write agent markdown
+        md_path = _unique_path(output_dir, name, 'md')
+        try:
+            with open(output_file, 'r') as f:
+                agent_text, sub_agents = parse_stream(f)
+        except (FileNotFoundError, Exception):
+            continue
+
+        with open(md_path, 'w') as f:
+            f.write(agent_text)
+
+        # Write sub-agents list and recurse
+        if sub_agents:
+            agents_path = _unique_path(output_dir, f'{name}-agents', 'json')
+            with open(agents_path, 'w') as f:
+                json.dump(sub_agents, f, indent=2)
+                f.write('\n')
+            _process_agent_outputs(sub_agents, output_dir)
+
+
+def convert_json_to_markdown(json_path: str, output_dir: str):
+    """Convert Claude stream-json output to a directory of markdown files.
+
+    Creates output_dir with:
+      - main.md: main assistant text
+      - main-agents.json: agent list
+      - {description}.md: each agent's output (recursively)
 
     Args:
-        json_path: Path to input JSON file
-        markdown_path: Path to output markdown file
+        json_path: Path to input stream-json file
+        output_dir: Path to output directory
     """
-    with open(json_path, 'r') as f:
-        text = extract_text_from_stream(f)
+    os.makedirs(output_dir, exist_ok=True)
 
-    with open(markdown_path, 'w') as f:
+    with open(json_path, 'r') as f:
+        text, agents = parse_stream(f)
+
+    with open(os.path.join(output_dir, 'main.md'), 'w') as f:
         f.write(text)
+
+    if agents:
+        with open(os.path.join(output_dir, 'main-agents.json'), 'w') as f:
+            json.dump(agents, f, indent=2)
+            f.write('\n')
+        _process_agent_outputs(agents, output_dir)
 
 
 def extract_cost_from_review(json_path: str) -> float:

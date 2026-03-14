@@ -379,6 +379,52 @@ class ReviewStorage:
         with open(patch_path, 'w') as f:
             f.write(content)
 
+    def _read_review_markup(self, patch_dir: str) -> Optional[str]:
+        """Read review markup, supporting both new directory and old file format.
+
+        New format: review/ directory with main.md + agent .md files
+        Old format: review.md single file (backward compat)
+
+        Returns:
+            Concatenated markdown content or None
+        """
+        review_dir = os.path.join(patch_dir, 'review')
+        if os.path.isdir(review_dir):
+            parts = []
+            # main.md always first
+            main_path = os.path.join(review_dir, 'main.md')
+            try:
+                with open(main_path, 'r') as f:
+                    parts.append(f.read())
+            except FileNotFoundError:
+                pass
+
+            # Collect all other .md files
+            try:
+                for entry in sorted(os.listdir(review_dir)):
+                    if entry == 'main.md' or not entry.endswith('.md'):
+                        continue
+                    md_path = os.path.join(review_dir, entry)
+                    try:
+                        with open(md_path, 'r') as f:
+                            parts.append(f.read())
+                    except FileNotFoundError:
+                        continue
+            except FileNotFoundError:
+                pass
+
+            if parts:
+                return '\n\n---\n\n'.join(parts)
+            return None
+
+        # Fall back to old single-file format
+        old_path = os.path.join(patch_dir, 'review.md')
+        try:
+            with open(old_path, 'r') as f:
+                return f.read()
+        except FileNotFoundError:
+            return None
+
     def read_review_file(self, token: str, review_id: str, patch_num: int,
                         fmt: str) -> Optional[str]:
         """Read a review file
@@ -394,10 +440,12 @@ class ReviewStorage:
         """
         patch_dir = self.get_patch_dir(token, review_id, patch_num)
 
+        if fmt == 'markup':
+            return self._read_review_markup(patch_dir)
+
         # Map format to filename
         filename_map = {
             'json': 'review.json',
-            'markup': 'review.md',
             'inline': 'review-inline.txt',
             'metadata': 'review-metadata.json'
         }

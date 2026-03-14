@@ -34,7 +34,7 @@ class ReviewContext:
     prompt_path: str = ""
     full_prompt_path: str = ""
     review_json_path: str = ""
-    review_md_path: str = ""
+    review_dir: str = ""
 
 
 class LLMWorker:
@@ -180,7 +180,7 @@ class LLMWorker:
 
         ctx.full_prompt_path = os.path.join(ctx.work_path, ctx.prompt_path)
         ctx.review_json_path = os.path.join(ctx.patch_dir, 'review.json')
-        ctx.review_md_path = os.path.join(ctx.patch_dir, 'review.md')
+        ctx.review_dir = os.path.join(ctx.patch_dir, 'review')
 
         if not os.path.exists(ctx.full_prompt_path):
             log_thread_debug("WARNING", f"  Prompt NOT found: {ctx.full_prompt_path}")
@@ -366,7 +366,7 @@ class LLMWorker:
 
         # Convert JSON to markdown
         try:
-            convert_json_to_markdown(ctx.review_json_path, ctx.review_md_path)
+            convert_json_to_markdown(ctx.review_json_path, ctx.review_dir)
             return True
         except Exception as e:
             log_thread(f"Error converting review to markdown: {e}")
@@ -386,8 +386,8 @@ class LLMWorker:
 
         # Try to convert partial JSON to markdown (best effort)
         try:
-            partial_md_path = os.path.join(ctx.patch_dir, f'review-partial-attempt{ctx.attempt}.md')
-            convert_json_to_markdown(ctx.review_json_path, partial_md_path)
+            partial_dir = os.path.join(ctx.patch_dir, f'review-partial-attempt{ctx.attempt}')
+            convert_json_to_markdown(partial_json_path, partial_dir)
         except Exception:
             pass
 
