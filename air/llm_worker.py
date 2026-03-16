@@ -28,6 +28,7 @@ class ReviewContext:
     attempt: int
     model: str
     llm_mode: str
+    prompt_dir: str = ""
 
     # Computed paths
     work_prompt_dir: str = ""
@@ -97,6 +98,7 @@ class LLMWorker:
         metadata = self.storage.get_review_metadata(review_id)
         model = metadata.get('model', self.config.claude_model)
         llm_mode = metadata.get('llm_mode', 'classic')
+        prompt_dir = metadata.get('prompt_dir', '')
         patch_dir = self.storage.get_patch_dir(token, review_id, patch_num)
 
         # Build context
@@ -110,6 +112,7 @@ class LLMWorker:
             attempt=0,
             model=model,
             llm_mode=llm_mode,
+            prompt_dir=prompt_dir,
         )
 
         # Run with retries
@@ -154,7 +157,7 @@ class LLMWorker:
 
     def _prepare_prompt_directory(self, ctx: ReviewContext) -> bool:
         """Copy prompt directory to work tree and set up paths"""
-        prompt_dir = self.config.review_prompt_dir.rstrip('/')
+        prompt_dir = (ctx.prompt_dir or self.config.review_prompt_dir).rstrip('/')
         prompt_dir_basename = os.path.basename(prompt_dir)
         ctx.work_prompt_dir = os.path.join(ctx.work_path, prompt_dir_basename)
 

@@ -82,6 +82,8 @@ class ReviewStorage:
                 'message': None,
                 'patch_count': 0,  # Will be updated when patches are processed
             }
+            if request_data.get('prompt_dir'):
+                self.reviews[review_id]['prompt_dir'] = request_data['prompt_dir']
             print("[storage.create_review] Metadata created, saving to disk")
             self.save_metadata()
             print("[storage.create_review] Metadata saved")

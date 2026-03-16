@@ -131,6 +131,14 @@ class AirService:
             raise ValueError(f"Invalid llm_mode: {llm_mode}. Must be 'classic' or 'orc'")
         data['llm_mode'] = llm_mode
 
+        # Validate prompt_dir: admin-only override
+        prompt_dir = data.get('prompt_dir')
+        if prompt_dir:
+            if not self.token_auth or not self.token_auth.is_superuser(token):
+                raise ValueError("Only admin tokens can specify a custom prompt_dir")
+            if not os.path.isdir(prompt_dir):
+                raise ValueError(f"prompt_dir does not exist: {prompt_dir}")
+
         # Fetch patchwork series info before creating review so metadata is populated
         if has_patchwork and self.patchwork:
             try:
